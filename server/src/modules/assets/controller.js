@@ -1,0 +1,13 @@
+import { z } from 'zod';
+import { asyncHandler } from '../../utils/errors.js';
+import { bulkDeleteAssets, bulkUpdateAssets, createAsset, deleteAsset, getAsset, getAssetForm, listAssets, updateAsset } from './service.js';
+const bodySchema = z.object({ values: z.record(z.string(), z.any()) });
+const bulkSchema = z.object({ publicIds: z.array(z.string().min(1)).min(1).max(100), values: z.record(z.string(), z.any()).optional() });
+export const form = asyncHandler(async (req, res) => res.json({ success: true, data: await getAssetForm(req.params.assetTypeId) }));
+export const list = asyncHandler(async (req, res) => res.json({ success: true, data: await listAssets(req.params.assetTypeId, req.query.page, req.query.pageSize) }));
+export const create = asyncHandler(async (req, res) => res.status(201).json({ success: true, data: await createAsset(req.params.assetTypeId, bodySchema.parse(req.body).values) }));
+export const get = asyncHandler(async (req, res) => res.json({ success: true, data: await getAsset(req.params.publicId) }));
+export const update = asyncHandler(async (req, res) => res.json({ success: true, data: await updateAsset(req.params.publicId, bodySchema.parse(req.body).values) }));
+export const remove = asyncHandler(async (req, res) => { await deleteAsset(req.params.publicId); res.json({ success: true }); });
+export const bulkUpdate = asyncHandler(async (req, res) => res.json({ success: true, data: await bulkUpdateAssets(req.params.assetTypeId, bulkSchema.parse(req.body).publicIds, bulkSchema.parse(req.body).values || {}) }));
+export const bulkRemove = asyncHandler(async (req, res) => res.json({ success: true, data: await bulkDeleteAssets(req.params.assetTypeId, bulkSchema.parse(req.body).publicIds) }));

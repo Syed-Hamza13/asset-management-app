@@ -1,0 +1,26 @@
+services:
+  asset-management:
+    image: syedhamza6265/asset-management-app:bookworm-slim
+    container_name: asset-management-app
+    restart: unless-stopped
+
+    ports:
+      - "4000:4000"
+
+    environment:
+      NODE_ENV: production
+      HOST: 0.0.0.0
+      PORT: 4000
+      FRONTEND_URL: http://localhost:4000
+
+      DB_HOST: 10.146.130.250
+      DB_PORT: 3306
+      DB_NAME: asset_management
+      DB_USER: root
+      DB_PASSWORD: rootpassword
+
+      SESSION_SECRET: replace_with_a_long_random_secret
+      TURNSTILE_SITE_KEY: 0x4AAAAAAEXeYHa6UT7ssNUT
+      TURNSTILE_SECRET_KEY: 0x4AAAAAAEXeYJQuyDhqH9kA9kf18O55Nnw
+      SESSION_MAX_AGE_MS: 86400000
+

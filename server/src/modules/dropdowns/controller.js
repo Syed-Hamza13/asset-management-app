@@ -1,0 +1,14 @@
+import { z } from 'zod';
+import { asyncHandler } from '../../utils/errors.js';
+import { addOption, createDropdown, deleteDropdown, deleteOption, getDropdown, listDropdowns, updateDropdown, updateOption } from './service.js';
+const booleanSchema = z.preprocess((value) => typeof value === 'number' ? value !== 0 : value, z.boolean());
+const dropdownSchema = z.object({ name: z.string().trim().min(1).max(150), isActive: booleanSchema.optional().default(true) });
+const optionSchema = z.object({ label: z.string().trim().min(1).max(150), value: z.string().trim().min(1).max(150), displayOrder: z.coerce.number().int().min(0).max(100000).default(0), isActive: z.boolean().default(true) });
+export const list = asyncHandler(async (_req, res) => res.json({ success: true, data: await listDropdowns() }));
+export const get = asyncHandler(async (req, res) => res.json({ success: true, data: await getDropdown(req.params.id) }));
+export const create = asyncHandler(async (req, res) => res.status(201).json({ success: true, data: await createDropdown(dropdownSchema.parse(req.body).name) }));
+export const update = asyncHandler(async (req, res) => { const d = dropdownSchema.parse(req.body); res.json({ success: true, data: await updateDropdown(req.params.id, d.name, d.isActive) }); });
+export const remove = asyncHandler(async (req, res) => { await deleteDropdown(req.params.id); res.json({ success: true }); });
+export const createOption = asyncHandler(async (req, res) => { const d = optionSchema.parse(req.body); const id = await addOption(req.params.id, d.label, d.value, d.displayOrder); res.status(201).json({ success: true, data: { id } }); });
+export const updateOptionController = asyncHandler(async (req, res) => res.json({ success: true, data: await updateOption(req.params.id, req.params.optionId, optionSchema.parse(req.body)) }));
+export const removeOption = asyncHandler(async (req, res) => { await deleteOption(req.params.id, req.params.optionId); res.json({ success: true }); });
