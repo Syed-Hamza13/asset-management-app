@@ -214,42 +214,6 @@ Expected response:
 }
 ```
 
-## Docker image publishing to Docker Hub
-
-### 1) Log in to Docker Hub
-
-```bash
-docker login
-```
-
-### 2) Push the image
-
-```bash
-docker push syedhamza6265/asset-management-app:bookworm-slim
-```
-
-## GitHub publishing steps
-
-### 1) Initialize git (if needed)
-
-```bash
-git init
-git add .
-git commit -m "Initial commit: Asset Management App"
-```
-
-### 2) Add the remote
-
-```bash
-git remote add origin <your-github-repo-url>
-```
-
-### 3) Push to GitHub
-
-```bash
-git branch -M main
-git push -u origin main
-```
 
 ## Production security notes
 
@@ -262,9 +226,7 @@ Before public deployment, make sure:
 - `FRONTEND_URL` matches your real domain or IP
 - `.env` files are not committed to GitHub
 
-## Resume-friendly summary
 
-This project is a full-stack asset management application that centralizes inventory tracking, custom field configuration, bulk asset operations, secure authentication, and reporting in a single system. It was developed using React and Vite for the frontend, Express and MySQL for the backend, and includes Docker-based production deployment, CSRF protection, Turnstile verification, and migration-driven database setup. The solution is designed for real-world operational use and demonstrates capability across full-stack development, database design, secure application architecture, and deployment automation.
 
 ## Notes
 
