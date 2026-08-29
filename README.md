@@ -173,10 +173,10 @@ services:
       PORT: 3000
       FRONTEND_URL: http://localhost:4000
 
-      DB_HOST: YOUR_MYSQL_CONTAINER_NAME_OR_HOST
+      DB_HOST: your_db_host # eg. localhost
       DB_PORT: 3306
-      DB_NAME: asset_management
-      DB_USER: asset_app
+      DB_NAME: your_db_name
+      DB_USER: your_db_user
       DB_PASSWORD: your_db_password
 
       SESSION_SECRET: your_long_random_session_secret
