@@ -4,12 +4,9 @@ node_modules/
 
 # Environment files
 .env
-.env.*
-
 client/.env
-client/.env.*
 server/.env
-server/.env.*
+
 
 # Build output
 client/dist/
@@ -34,6 +31,5 @@ Thumbs.db
 uploads/
 
 # docker compose 
-.docker-compose.yml 
-.docker-compose.yaml
+
 docker-compose.yaml
