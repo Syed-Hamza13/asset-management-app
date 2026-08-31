@@ -233,3 +233,7 @@ Before public deployment, make sure:
 - The app includes a one-time admin setup flow for first-time installation.
 - Production Turnstile verification is enforced only in `NODE_ENV=production`.
 - The browser-side React client uses same-origin API calls when deployed behind the Express container, which makes the single-container architecture reliable and simpler to manage.
+
+
+
+docker build --build-arg VITE_TURNSTILE_SITE_KEY="0x4AAAAAAEXeYHa6UT7ssNUT" -t syedhamza6265/asset-management-app:bookworm-slim .

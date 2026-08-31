@@ -25,10 +25,15 @@ const app = express();
 const MySQLStore = MySQLStoreFactory(session);
 const sessionStore = new MySQLStore({ clearExpired: true, checkExpirationInterval: 15 * 60 * 1000, expiration: env.SESSION_MAX_AGE_MS }, pool);
 const isSecureSession = /^https:/i.test(env.FRONTEND_URL);
+const frontendUrl = new URL(env.FRONTEND_URL);
+const isLocalBrowserOrigin = frontendUrl.hostname === 'localhost' || frontendUrl.hostname === '127.0.0.1';
+const enableSecureBrowserHeaders = isSecureSession || isLocalBrowserOrigin;
 
 app.set('trust proxy', 1);
 app.use(
   helmet({
+    crossOriginOpenerPolicy: enableSecureBrowserHeaders ? { policy: 'same-origin' } : false,
+    originAgentCluster: enableSecureBrowserHeaders,
     contentSecurityPolicy: {
       directives: {
         defaultSrc: ["'self'"],
