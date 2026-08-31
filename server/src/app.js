@@ -32,21 +32,64 @@ const enableSecureBrowserHeaders = isSecureSession || isLocalBrowserOrigin;
 app.set('trust proxy', 1);
 app.use(
   helmet({
-    crossOriginOpenerPolicy: enableSecureBrowserHeaders ? { policy: 'same-origin' } : false,
+    crossOriginOpenerPolicy: enableSecureBrowserHeaders
+      ? { policy: 'same-origin' }
+      : false,
+
     originAgentCluster: enableSecureBrowserHeaders,
+
     contentSecurityPolicy: {
       directives: {
         defaultSrc: ["'self'"],
         baseUri: ["'self'"],
-        connectSrc: ["'self'", 'https://challenges.cloudflare.com', 'https://*.cloudflare.com'],
-        frameSrc: ["'self'", 'https://challenges.cloudflare.com', 'https://*.cloudflare.com'],
-        imgSrc: ["'self'", 'data:', 'https:'],
+
+        connectSrc: [
+          "'self'",
+          'https://challenges.cloudflare.com',
+          'https://*.cloudflare.com',
+        ],
+
+        frameSrc: [
+          "'self'",
+          'https://challenges.cloudflare.com',
+          'https://*.cloudflare.com',
+        ],
+
+        imgSrc: [
+          "'self'",
+          'data:',
+          'https:',
+        ],
+
         objectSrc: ["'none'"],
-        scriptSrc: ["'self'", 'https://challenges.cloudflare.com', 'https://*.cloudflare.com'],
-        scriptSrcElem: ["'self'", 'https://challenges.cloudflare.com', 'https://*.cloudflare.com'],
-        styleSrc: ["'self'", "'unsafe-inline'"],
-        workerSrc: ["'self'", 'blob:'],
+
+        scriptSrc: [
+          "'self'",
+          'https://challenges.cloudflare.com',
+          'https://*.cloudflare.com',
+        ],
+
+        scriptSrcElem: [
+          "'self'",
+          'https://challenges.cloudflare.com',
+          'https://*.cloudflare.com',
+        ],
+
+        styleSrc: [
+          "'self'",
+          "'unsafe-inline'",
+        ],
+
+        workerSrc: [
+          "'self'",
+          'blob:',
+        ],
+
         formAction: ["'self'"],
+
+        // IMPORTANT:
+        // Do not upgrade HTTP LAN resources to HTTPS.
+        upgradeInsecureRequests: null,
       },
     },
   })
