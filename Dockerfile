@@ -38,6 +38,6 @@ COPY server/migrations ./migrations
 
 COPY --from=frontend-builder /app/client/dist /app/client/dist
 
-EXPOSE 6100
+EXPOSE 8073
 
 CMD ["node", "src/server.js"]
