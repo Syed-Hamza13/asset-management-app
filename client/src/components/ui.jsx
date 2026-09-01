@@ -1,3 +1,6 @@
+import { useEffect, useRef, useState } from "react";
+import { formatDateValue, indianDateToIso } from "../utils";
+
 export function Button({
   children,
   variant = "primary",
@@ -48,6 +51,72 @@ export function Input({ label, hint, error, ...props }) {
       {error && (
         <span className="mt-1 block text-xs text-red-600">{error}</span>
       )}
+    </label>
+  );
+}
+
+export function DateInput({ label, value, onChange, error, required, disabled }) {
+  const pickerRef = useRef(null);
+  const [display, setDisplay] = useState(value ? formatDateValue(value) : "");
+
+  useEffect(() => {
+    setDisplay(value ? formatDateValue(value) : "");
+  }, [value]);
+
+  function updateDisplay(nextDisplay) {
+    if (!/^\d{0,2}(\/\d{0,2}(\/\d{0,4})?)?$/.test(nextDisplay)) return;
+    setDisplay(nextDisplay);
+    if (nextDisplay === "") onChange({ target: { value: "" } });
+    else {
+      const iso = indianDateToIso(nextDisplay);
+      if (iso) onChange({ target: { value: iso } });
+    }
+  }
+
+  function handlePickerChange(event) {
+    onChange(event);
+  }
+
+  return (
+    <label className="block">
+      <span className="mb-1.5 block text-sm font-medium text-slate-700">
+        {label}
+        {required ? <span className="text-red-500"> *</span> : null}
+      </span>
+      <div className="flex w-full overflow-hidden rounded-xl border border-slate-200 bg-white transition focus-within:border-slate-400 focus-within:ring-4 focus-within:ring-slate-100">
+        <input
+          type="text"
+          inputMode="numeric"
+          placeholder="DD/MM/YYYY"
+          value={display}
+          onChange={(event) => updateDisplay(event.target.value)}
+          disabled={disabled}
+          className="min-w-0 flex-1 bg-transparent px-3.5 py-2.5 outline-none"
+        />
+        <button
+          type="button"
+          aria-label="Open calendar"
+          title="Open calendar"
+          disabled={disabled}
+          onClick={() => {
+            if (pickerRef.current?.showPicker) pickerRef.current.showPicker();
+            else pickerRef.current?.click();
+          }}
+          className="relative grid w-12 shrink-0 place-items-center border-l border-slate-200 text-slate-600 hover:bg-slate-50 disabled:opacity-40"
+        >
+          <span aria-hidden="true">▦</span>
+          <input
+            ref={pickerRef}
+            type="date"
+            value={value ?? ""}
+            onChange={handlePickerChange}
+            tabIndex={-1}
+            aria-hidden="true"
+            className="pointer-events-none absolute inset-0 h-full w-full opacity-0"
+          />
+        </button>
+      </div>
+      {error && <span className="mt-1 block text-xs text-red-600">{error}</span>}
     </label>
   );
 }

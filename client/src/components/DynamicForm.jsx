@@ -1,6 +1,6 @@
-import { useEffect, useState } from "react";
-import { Input, Select } from "./ui";
-import { todayInputValue, formatDateValue, indianDateToIso } from '../utils';
+import { useEffect } from "react";
+import { DateInput, Input, Select } from "./ui";
+import { todayInputValue } from '../utils';
 
 export function DynamicForm({
   fields,
@@ -153,33 +153,13 @@ export function DynamicForm({
 }
 
 function DateField({ field, value, setValues, common }) {
-  const [display, setDisplay] = useState(value ? formatDateValue(value) : "");
-
-  useEffect(() => {
-    setDisplay(value ? formatDateValue(value) : "");
-  }, [value]);
-
-  function handleChange(e) {
-    const raw = e.target.value;
-    if (!/^\d{0,2}(\/\d{0,2}(\/\d{0,4})?)?$/.test(raw)) return;
-
-    setDisplay(raw);
-    if (raw === "") {
-      setValues((v) => ({ ...v, [field.key]: undefined }));
-      return;
-    }
-
-    const iso = indianDateToIso(raw);
-    if (iso) setValues((v) => ({ ...v, [field.key]: iso }));
-  }
-
   return (
-    <Input
+    <DateInput
       label={field.name}
-      type="text"
-      placeholder="DD/MM/YYYY"
-      value={display}
-      onChange={handleChange}
+      value={value ?? ""}
+      onChange={(e) =>
+        setValues((v) => ({ ...v, [field.key]: e.target.value }))
+      }
       {...common}
     />
   );

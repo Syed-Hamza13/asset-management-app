@@ -9,7 +9,6 @@ import { applyCommonAutomations } from "../commonForms/automationService.js";
 
 export async function getAssetForm(assetTypeId) {
   const id = assertIntegerId(assetTypeId, "asset type id");
-  await attachCommonFields(id);
   const [rows] = await pool.execute(
     `SELECT
   atf.required,
@@ -55,15 +54,17 @@ export async function validateValues(assetTypeId, values, existingValues = {}) {
     const has = Object.prototype.hasOwnProperty.call(values, field.key);
 
     if (!has) {
+      const existingValue = existingValues[field.key];
       if (
         field.required &&
-        !Object.prototype.hasOwnProperty.call(existingValues, field.key)
+        (!Object.prototype.hasOwnProperty.call(existingValues, field.key) ||
+          existingValue === null || existingValue === undefined || existingValue === "")
       ) {
         throw new AppError(400, "REQUIRED_FIELD", `${field.name} is required.`);
       }
 
       if (Object.prototype.hasOwnProperty.call(existingValues, field.key)) {
-        result[field.key] = existingValues[field.key];
+        result[field.key] = existingValue;
       }
 
       continue;
@@ -193,8 +194,12 @@ export async function getAsset(publicId) {
 
 export async function updateAsset(publicId, values) {
   const current = await getAsset(publicId);
-  const incoming = { ...current.values, ...values };
   const form = await getAssetForm(current.assetTypeId);
+  const currentValues = current.values || {};
+  const allowedKeys = new Set(form.map((field) => field.key));
+  const incoming = Object.fromEntries(
+    Object.entries({ ...currentValues, ...values }).filter(([key]) => allowedKeys.has(key)),
+  );
   const quantityField = form.find((field) => field.type === "quantity");
   if (quantityField) incoming[quantityField.key] = 1;
   const automated = await applyAutomations(
@@ -207,9 +212,13 @@ export async function updateAsset(publicId, values) {
     automated,
     current.values,
   );
+  const legacyValues = Object.fromEntries(
+    Object.entries(currentValues).filter(([key]) => !allowedKeys.has(key)),
+  );
   if (quantityField) delete merged[quantityField.key];
+  const storedValues = { ...legacyValues, ...merged };
   await pool.execute("UPDATE assets SET values_json = ? WHERE public_id = ?", [
-    JSON.stringify(merged),
+    JSON.stringify(storedValues),
     publicId,
   ]);
   return getAsset(publicId);

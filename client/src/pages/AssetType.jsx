@@ -4,6 +4,7 @@ import { api } from "../api/client";
 import {
   Button,
   Card,
+  DateInput,
   EmptyState,
   Input,
   Select,
@@ -332,15 +333,16 @@ export function AssetType() {
     event.preventDefault();
     setBulkLoading(true);
     try {
-      const value = bulkField?.type === "date" || bulkField?.type === "auto_date"
-        ? indianDateToIso(bulkValue)
+      const isDateField = bulkField?.type === "date" || bulkField?.type === "auto_date";
+      const value = isDateField
+        ? /^\d{4}-\d{2}-\d{2}$/.test(bulkValue) ? bulkValue : indianDateToIso(bulkValue)
         : bulkField?.type === "number"
           ? Number(bulkValue)
           : bulkField?.type === "boolean"
             ? bulkValue === "true"
             : bulkValue;
-      if ((bulkField?.type === "date" || bulkField?.type === "auto_date") && !value) {
-        setError(`${bulkField.name} must use DD/MM/YYYY format.`);
+      if (isDateField && !value) {
+        setError(`${bulkField.name} must be a valid date.`);
         return;
       }
       await api.assets.bulkUpdate(id, selectedAssetIds, { [bulkFieldKey]: value });
@@ -613,7 +615,11 @@ export function AssetType() {
           ) : bulkField?.type === "boolean" ? (
             <Select label="Value" value={bulkValue} onChange={(event) => setBulkValue(event.target.value)} options={[{ value: "true", label: "Yes" }, { value: "false", label: "No" }]} required />
           ) : (
-            <Input label="Value" type={bulkField?.type === "number" ? "number" : "text"} placeholder={bulkField?.type === "date" || bulkField?.type === "auto_date" ? "DD/MM/YYYY" : ""} value={bulkValue} onChange={(event) => setBulkValue(event.target.value)} required />
+            bulkField?.type === "date" || bulkField?.type === "auto_date" ? (
+              <DateInput label="Value" value={bulkValue} onChange={(event) => setBulkValue(event.target.value)} required />
+            ) : (
+              <Input label="Value" type={bulkField?.type === "number" ? "number" : "text"} value={bulkValue} onChange={(event) => setBulkValue(event.target.value)} required />
+            )
           )}
           <div className="flex justify-end gap-2">
             <Button type="button" variant="secondary" onClick={() => setBulkAction("")}>Cancel</Button>

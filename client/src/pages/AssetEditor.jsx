@@ -3,7 +3,6 @@ import { Link, useNavigate, useParams } from 'react-router-dom';
 import { api } from '../api/client';
 import { Button, Card, Alert } from '../components/ui';
 import { DynamicForm } from '../components/DynamicForm';
-import { indianDateToIso } from '../utils/date';
 import { useToast } from '../context/ToastContext';
 
 async function loadFields(typeId, includeQuantity = true) {
@@ -19,26 +18,11 @@ async function loadFields(typeId, includeQuantity = true) {
 }
 
 function toFormValues(values, fields) {
-  const next = { ...(values || {}) };
-  for (const field of fields) {
-    if (field.type === 'date' && next[field.key]) {
-      const match = String(next[field.key]).match(/^(\d{4})-(\d{2})-(\d{2})$/);
-      if (match) next[field.key] = `${match[3]}/${match[2]}/${match[1]}`;
-    }
-  }
-  return next;
+  return { ...(values || {}) };
 }
 
 function toApiValues(values, fields) {
-  const next = { ...(values || {}) };
-  for (const field of fields) {
-    if (field.type === 'date' && Object.prototype.hasOwnProperty.call(next, field.key)) {
-      const iso = indianDateToIso(next[field.key]);
-      if (iso === null) throw Object.assign(new Error(`${field.name} must use DD/MM/YYYY format.`), { fields: { [field.key]: 'Use DD/MM/YYYY.' } });
-      next[field.key] = iso;
-    }
-  }
-  return next;
+  return { ...(values || {}) };
 }
 
 export function AssetEditor() {
