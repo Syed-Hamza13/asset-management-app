@@ -1,217 +1,600 @@
-# Asset Management App — Fixes and Extension Plan
+# Asset Management App — Architecture Review, Bug Diagnosis, and Extension Plan
 
-## Scope and status
+## 0. Purpose and status of this document
 
-This document records a read-only review of the current React, Express/Node.js, and MySQL application and proposes a staged implementation plan for the reported form and automation issues, multi-user access, and email notifications.
+This is a **read-only** architecture and scope review of the current React + Express + MySQL asset-management application. It captures:
 
-**No application code, database schema, configuration, or existing documentation was changed as part of this review.** This file is the only intended deliverable. The proposed changes below are not implemented yet.
+1. A snapshot of the current architecture (frontend, backend, database, auth, deployment).
+2. Code-level diagnosis of the two reported bugs.
+3. Scope and design direction for the two requested extensions: **multi-user with permissions and per-user customization**, and **global SMTP with per-user email notification rules, templates, history, and toasts**.
+4. A phased implementation plan with acceptance criteria and a cross-cutting test plan.
+5. Risks and decisions that must be resolved before implementation begins.
 
-## Current application at a glance
+**No application code, database schema, configuration, or existing documentation was changed as part of this review.** This file is the only intended deliverable. Nothing proposed below is implemented yet.
 
-- **Frontend:** React 19, Vite, React Router; dynamic forms, asset-type-specific lists, reports, and XLSX export.
-- **Backend:** Express 5 REST API; SQL access through `mysql2`; request validation with Zod; session authentication.
-- **Database:** MySQL; numbered SQL migrations run during server startup.
-- **Current identity model:** A single initial administrator account can be set up. Login/session data contains a user ID and email, but no role or resource-level permission model is present.
-- **Existing functional areas:** Asset types, field definitions, dropdowns, a global common form, per-asset-type and common-form automations, reports, spreadsheet exports, branding, and password changes.
-- **Email:** No SMTP configuration, email templates, notification rules, delivery queue, or email history implementation was found in the reviewed source and dependencies.
+---
 
-Relevant implementation entry points include [Dashboard.jsx](./client/src/pages/Dashboard.jsx), [AssetEditor.jsx](./client/src/pages/AssetEditor.jsx), [DynamicForm.jsx](./client/src/components/DynamicForm.jsx), [AutomationBuilder.jsx](./client/src/components/AutomationBuilder.jsx), [asset service](./server/src/modules/assets/service.js), [common-form service](./server/src/modules/commonForms/service.js), [auth service](./server/src/modules/auth/service.js), [API routes](./server/src/routes.js), and the SQL files under [server/migrations](./server/migrations).
+## 1. Current application at a glance
 
-## Findings from the current code
+### 1.1 Tech stack
 
-### 1. New asset type can have no fields when adding an asset from the dashboard
+- **Frontend:** React 19, Vite 7, React Router 7, Tailwind CSS 4, `xlsx` for client-side Excel export.
+- **Backend:** Node.js (ESM), Express 5, `mysql2/promise`, Zod for request validation, `argon2` for password hashing, `express-session` with `express-mysql-session` store, `helmet`, `cors`, `cookie-parser`, `express-rate-limit`, Cloudflare Turnstile for login/setup verification.
+- **Database:** MySQL (InnoDB). Numbered SQL migrations under [server/migrations](./server/migrations) are applied automatically at server startup by [runMigrations](./server/src/config/migrate.js).
+- **Deployment:** Single-container Docker image. Express serves the built React bundle from `client/dist` and exposes the API under `/api/v1`. See [Dockerfile](./Dockerfile) and [docker-compose.example.yaml](./docker-compose.example.yaml).
 
-The dashboard’s **Add Asset** flow selects an asset type and immediately requests its form using `api.assets.form(type.id)`. Creating a new type in this flow calls the same selection/form-loading function. That request is served by the asset form endpoint, which reads `asset_type_fields`.
+### 1.2 Identity and security model today
 
-The current behavior has an initialization gap:
+- A **single admin account** is created once through the first-time setup flow ([setup/controller.js](./server/src/modules/setup/controller.js), [Setup.jsx](./client/src/pages/Setup.jsx)). `createAdmin` in [auth/service.js](./server/src/modules/auth/service.js) refuses to create a second user.
+- Login is email + password + Turnstile token, rate-limited by [loginRateLimit](./server/src/middleware/rateLimit.js). Session cookie `sid` is HTTP-only, `sameSite=lax`, secure when `FRONTEND_URL` is HTTPS.
+- CSRF protection is a session-bound token compared with `crypto.timingSafeEqual` in [csrf.js](./server/src/middleware/csrf.js); the client sends it as `X-CSRF-Token` from [api/client.js](./client/src/api/client.js).
+- [requireAuth](./server/src/middleware/auth.js) only checks `req.session.userId`. **There is no role check, no ownership check, and no per-resource authorization anywhere in the API.**
+- Session payload contains only `userId`, `email`, and `csrfToken`. No role, no permissions, no scopes.
 
-1. `createAssetType` inserts the type but does not attach common-form fields.
-2. The form-reading path returns the fields already attached to that type; it does not initialize the common fields.
-3. `attachCommonFields` is only called later by `createAsset`, after the user has submitted the form.
+### 1.3 Functional areas that already work
 
-Consequently, a newly created type (including one created from the dashboard’s add-asset flow) can present an empty form even though a common form has been configured. This is the leading code-supported explanation for the reported symptom. Asset types intentionally configured with no fields also need a clear empty-state message and a route to configure their form.
+- **Asset types** CRUD ([assetTypes/service.js](./server/src/modules/assetTypes/service.js), [AssetType.jsx](./client/src/pages/AssetType.jsx)).
+- **Field definitions** CRUD with type validation and key immutability ([fields/service.js](./server/src/modules/fields/service.js), [Fields.jsx](./client/src/pages/Fields.jsx)).
+- **Dropdowns and dropdown options** CRUD; option rename cascades into `assets.values_json`, `asset_automations`, and `common_form_automations` ([dropdowns/service.js](./server/src/modules/dropdowns/service.js), [Dropdowns.jsx](./client/src/pages/Dropdowns.jsx)).
+- **Per-asset-type form configuration** (which fields appear, required flag, show-in-list flag, ordering) via [saveForm](./server/src/modules/assetTypes/service.js).
+- **A single global Common Form** with its own fields and ordering. Saving it re-syncs every asset type's fields and ordering through [syncCommonFieldOrder](./server/src/modules/commonForms/service.js).
+- **Automations** in two families:
+  - Per-asset-type rules in `asset_automations` ([assets/automation.js](./server/src/modules/assets/automation.js)).
+  - Common-form rules in `common_form_automations` ([commonForms/automationService.js](./server/src/modules/commonForms/automationService.js)).
+  - Conditions: `filled`, `empty`, `changed`, `equals`. Actions: `set_value`, `set_today`.
+  - Rules are evaluated **only on the server, only inside `createAsset` and `updateAsset`**.
+- **Asset list page** per asset type with Excel-style column filters, bulk update, bulk delete, XLSX export, column customization ([AssetType.jsx](./client/src/pages/AssetType.jsx)).
+- **Reports page** that aggregates every asset type and every asset into one filterable, sortable, exportable table ([Reports.jsx](./client/src/pages/Reports.jsx)).
+- **Branding** (favicon and app icon as data URLs) stored in `app_settings` ([branding/service.js](./server/src/modules/branding/service.js), [Settings.jsx](./client/src/pages/Settings.jsx)).
+- **Password change** with forced re-login ([auth/controller.js](./server/src/modules/auth/controller.js)).
 
-**Planned correction:** Make common-field initialization reliable before the first form is displayed, preferably as part of asset-type creation or an idempotent form-initialization path. Keep the operation safe under repeated requests and avoid modifying existing user-configured fields. Add a clear frontend empty state so “no fields configured” is not mistaken for a broken form.
+### 1.4 What does NOT exist today
 
-### 2. Automation rules run on save, not as the user edits a form
+- No second user, no roles, no permissions, no ownership columns on any table.
+- No SMTP configuration, no mail transport dependency (`nodemailer` or equivalent is absent from [server/package.json](./server/package.json)), no email templates, no notification rules, no outbox/queue, no delivery worker, no email history.
+- No live (client-side) automation evaluation in [DynamicForm.jsx](./client/src/components/DynamicForm.jsx).
+- No audit log, no per-user preferences, no per-user reports.
 
-The automation builder persists rules through the API. `DynamicForm` updates local form values when a user changes a control, but it does not evaluate automation rules. On the backend, asset-specific and common-form automations are applied in the asset create/update service. This explains why configured values are applied after saving rather than immediately when the source field changes.
+---
 
-Both automation families are currently evaluated server-side on create/update. That behavior is valuable for data integrity and must remain authoritative even after live client-side behavior is added.
+## 2. Data model snapshot
 
-**Planned correction:** Return or otherwise make the active rules available to the dynamic form, evaluate them on relevant field changes, and update dependent controls immediately. Reuse a clearly defined rule-evaluation contract across common and asset-type rules. Continue validating and applying the rules on the server on submit so API callers cannot bypass them.
+All tables are InnoDB. None of them carry an owner/user column today.
 
-Before implementing, define and test:
+| Table | Purpose | Notes |
+|---|---|---|
+| `users` | Login accounts | Only `id`, `email`, `password_hash`, timestamps. No role, no status. |
+| `asset_types` | Asset categories | `slug` is **globally UNIQUE**. |
+| `dropdowns` | Reusable option sets | `slug` is **globally UNIQUE**. |
+| `dropdown_options` | Options for a dropdown | Unique on `(dropdown_id, value)`. |
+| `field_definitions` | Reusable field metadata | `key` is **globally UNIQUE**. `type` ∈ {text, multiline, number, boolean, date, auto_date, dropdown, quantity}. |
+| `asset_type_fields` | Which fields belong to which asset type | Unique on `(asset_type_id, field_definition_id)`. Carries `required`, `show_in_list`, `display_order`. |
+| `assets` | Actual asset records | `public_id` (UUID) is the external identifier. `values_json` holds field-key → value map. |
+| `asset_automations` | Per-asset-type rules | FKs to `asset_types`, `field_definitions` (source and target). |
+| `common_forms` | Single global common form | `id TINYINT UNSIGNED PRIMARY KEY` (not auto-increment). Seeded with `id=1`. |
+| `common_form_fields` | Fields on the common form | FK to `common_forms` and `field_definitions`. |
+| `common_form_automations` | Rules on the common form | Same shape as `asset_automations`. |
+| `app_settings` | Global key/value settings | Currently only `favicon_data_url` and `app_icon_data_url`. |
+| `schema_migrations` | Migration tracking | Managed by [migrate.js](./server/src/config/migrate.js). |
+| `sessions` | express-session store | Created by `express-mysql-session`. |
 
-- Rule ordering and whether a rule-triggered target change can trigger another rule.
-- What happens when multiple matching rules target the same field.
-- What happens when the user manually changes or clears a value previously filled by automation.
-- How `filled`, `empty`, `changed`, and `equals` behave for numbers, booleans, dropdowns, and empty values.
-- A bounded evaluation strategy that prevents cycles or runaway rule chains.
+Migrations live in [server/migrations](./server/migrations): `001_initial.sql`, `002_automations.sql`, `003_common_form.sql`, `004_common_form_automations.sql`, `005_branding.sql`, `999_add_asset_list_columns.sql`. They run in filename order on every server start.
 
-### 3. Existing configuration and records are global, not user-scoped
+---
 
-The current database stores asset types, field definitions, dropdowns, assets, common forms, and automation rules without a user/owner identifier. `common_forms` is seeded with a single form using ID `1`. Field keys and dropdown slugs are globally unique. The reports page loads asset types and their assets across the whole application.
+## 3. API surface snapshot
 
-Authentication middleware checks only that a session has a user ID. There are no server-side role checks or per-resource access checks in the protected API routes. Hiding controls in React alone would not provide data isolation.
+All routes below are mounted under `/api/v1` and protected by `requireAuth` only. Source: [routes.js](./server/src/routes.js) and [app.js](./server/src/app.js).
 
-**Implication:** Multi-user support is a data-model and backend-authorization change, not just an account-creation screen. Every list, detail, update, delete, form, automation, export, and report query must be scoped and authorized on the server.
+- `GET /health` (public)
+- `GET /api/v1/setup/status`, `POST /api/v1/setup` (public, one-time)
+- `POST /api/v1/auth/login`, `POST /api/v1/auth/logout`, `GET /api/v1/auth/me`, `GET /api/v1/auth/csrf`, `POST /api/v1/auth/change-password`
+- `GET|PUT /api/v1/branding`
+- `GET|PUT /api/v1/common-form`
+- `GET|POST /api/v1/common-form/automations`, `DELETE /api/v1/common-form/automations/:id`
+- `GET|POST /api/v1/asset-types`, `GET|PATCH|DELETE /api/v1/asset-types/:id`
+- `GET|PUT /api/v1/asset-types/:id/form`
+- `GET|POST /api/v1/asset-types/:assetTypeId/automations`, `DELETE /api/v1/automations/:id`
+- `GET|POST /api/v1/fields`, `GET|PATCH|DELETE /api/v1/fields/:id`
+- `GET|POST /api/v1/dropdowns`, `GET|PATCH|DELETE /api/v1/dropdowns/:id`
+- `POST /api/v1/dropdowns/:id/options`, `PATCH|DELETE /api/v1/dropdowns/:id/options/:optionId`
+- `GET /api/v1/asset-types/:assetTypeId/assets/form`
+- `GET|POST /api/v1/asset-types/:assetTypeId/assets`
+- `PATCH|DELETE /api/v1/asset-types/:assetTypeId/assets/bulk`
+- `GET|PATCH|DELETE /api/v1/assets/:publicId`
 
-### 4. SMTP and email workflows are new functionality
+Every one of these endpoints currently returns or mutates **global** data. There is no scoping by user, no role gating, and no ownership check.
 
-The current settings page supports branding and password changes. The existing `app_settings` table is for global key/value settings; no email-specific settings or mail transport dependency was found. SMTP credentials must not be returned to the browser or stored as readable values.
+---
 
-## Proposed target behavior
+## 4. Frontend surface snapshot
 
-### Users, roles, permissions, and data isolation
+Routes are declared in [App.jsx](./client/src/App.jsx). Navigation is in [Layout.jsx](./client/src/components/Layout.jsx).
 
-- The first existing account remains the **admin** after the migration. Admin can manage accounts, grant/revoke permissions, access all user data and configuration, and manage global SMTP settings.
-- Additional accounts are regular users unless the admin explicitly grants more permissions.
-- Permission enforcement happens in backend middleware/services and in every relevant SQL query. The frontend also hides or disables unavailable actions for usability, but is not treated as an authorization boundary.
-- A user can view and work with only the assets, asset types, forms, fields, dropdowns, automation rules, reports, and email rules they own or are explicitly allowed to access.
-- One user’s form, field, report, or notification configuration must not change another user’s configuration or results.
-- Users may create and customize their own asset types, fields, forms, and reports only when their assigned permissions allow it. The admin can inspect/manage all users’ configurations and data.
+- `/` → [Dashboard.jsx](./client/src/pages/Dashboard.jsx): lists asset types, "+ Add Asset" modal (with inline type creation), "+ Add Asset Type" modal.
+- `/asset-types/:id` → [AssetType.jsx](./client/src/pages/AssetType.jsx): asset list with column filters, bulk actions, XLSX export, Configure Form, Configure Automations, Customize Columns, Rename, Delete Asset Type.
+- `/asset-types/:assetTypeId/new` → [AssetEditor.jsx](./client/src/pages/AssetEditor.jsx) (create mode).
+- `/assets/:publicId` → [AssetDetail.jsx](./client/src/pages/AssetDetail.jsx).
+- `/assets/:publicId/edit` → [AssetEditor.jsx](./client/src/pages/AssetEditor.jsx) (edit mode).
+- `/reports` → [Reports.jsx](./client/src/pages/Reports.jsx): aggregates every asset type, client-side filter/sort/export.
+- `/common-form` → [CommonForm.jsx](./client/src/pages/CommonForm.jsx): global common form + its automations.
+- `/fields` → [Fields.jsx](./client/src/pages/Fields.jsx).
+- `/dropdowns` → [Dropdowns.jsx](./client/src/pages/Dropdowns.jsx).
+- `/settings` → [Settings.jsx](./client/src/pages/Settings.jsx): branding + change password only.
+- `/login`, `/setup` → public.
 
-#### Suggested permission areas
+Shared components: [DynamicForm.jsx](./client/src/components/DynamicForm.jsx), [AutomationBuilder.jsx](./client/src/components/AutomationBuilder.jsx), [ui.jsx](./client/src/components/ui.jsx), [Turnstile.jsx](./client/src/components/Turnstile.jsx). Contexts: [AuthContext.jsx](./client/src/context/AuthContext.jsx), [ToastContext.jsx](./client/src/context/ToastContext.jsx).
 
-Use explicit capabilities, rather than a single broad “user/admin” check for every operation:
+---
 
-| Area | Example capabilities |
+## 5. Confirmed bugs (code-level diagnosis)
+
+### Bug 1 — "Add Asset" from Dashboard shows an empty form for a newly created asset type
+
+**User-visible symptom.** From the Dashboard, the user opens "+ Add Asset", types a brand-new asset type name, clicks "Create …", and the form area shows "No fields configured for this asset type yet." even though a Common Form with fields already exists.
+
+**Root cause (confirmed by reading the code).**
+
+1. [Dashboard.jsx:112–130](./client/src/pages/Dashboard.jsx) — `createTypeAndSelect()` calls `api.assetTypes.create({ name })` and then immediately calls `selectType(created)`.
+2. [Dashboard.jsx:81–110](./client/src/pages/Dashboard.jsx) — `selectType()` calls `api.assets.form(type.id)`, which hits `GET /api/v1/asset-types/:assetTypeId/assets/form`.
+3. [assets/controller.js:6](./server/src/modules/assets/controller.js) routes that to `getAssetForm(assetTypeId)` in [assets/service.js:10–38](./server/src/modules/assets/service.js). That query reads **only** from `asset_type_fields JOIN field_definitions`. For a brand-new type, `asset_type_fields` has zero rows, so the response is `[]`.
+4. [assetTypes/service.js:27–44](./server/src/modules/assetTypes/service.js) — `createAssetType` only does `INSERT INTO asset_types (name, slug) VALUES (?, ?)`. It **does not** call `attachCommonFields`.
+5. [commonForms/service.js:80–88](./server/src/modules/commonForms/service.js) — `attachCommonFields(assetTypeId, conn)` exists and does `INSERT IGNORE` of every common-form field into `asset_type_fields`. It is invoked from exactly two places:
+   - [assets/service.js:137–139](./server/src/modules/assets/service.js) inside `createAsset`, i.e. **after** the user has already submitted the form.
+   - [commonForms/service.js:56](./server/src/modules/commonForms/service.js) inside `syncCommonFieldOrder`, which runs only when the admin saves the Common Form.
+6. Therefore, between "type created" and "first asset saved", the type has no rows in `asset_type_fields`, and every form-reading endpoint returns an empty list.
+
+**The same gap also affects:**
+
+- [AssetEditor.jsx:54](./client/src/pages/AssetEditor.jsx) when the user navigates to `/asset-types/:id/new` for a freshly created type.
+- [AssetType.jsx:207–211](./client/src/pages/AssetType.jsx) which calls `api.assetTypes.form(id)` (a different endpoint, [assetTypes/service.js:90–115](./server/src/modules/assetTypes/service.js) `getForm`) — that query also reads only `asset_type_fields` and returns `[]` for a new type.
+- [Dashboard.jsx:51](./client/src/pages/Dashboard.jsx) "+ Add Asset Type" modal — same `createAssetType` path, same gap.
+
+**Secondary observation.** [Dashboard.jsx:290–294](./client/src/pages/Dashboard.jsx) already renders an empty-state message, but it is indistinguishable from a genuine "admin intentionally configured zero fields" state. The user cannot tell whether the form is broken or merely unconfigured, and there is no shortcut to "Configure Form" from that modal.
+
+**Planned correction (Phase 1).**
+
+- Make common-field initialization happen **at asset-type creation time**, inside the same transaction as the `INSERT INTO asset_types`. Concretely: `createAssetType` should call `attachCommonFields(newTypeId, conn)` before committing.
+- Keep `attachCommonFields` idempotent (it already uses `INSERT IGNORE`, so re-running is safe) and keep the call inside `createAsset` as a defensive net for types created before this fix.
+- Make the form-reading endpoints (`getAssetForm`, `getForm`) tolerant: if `asset_type_fields` is empty **and** the common form has fields, either (a) auto-attach inside a transaction and re-read, or (b) return a structured `uninitialized: true` flag so the UI can offer "Initialize from Common Form". Option (a) is simpler and matches user expectation; option (b) is safer for admin-controlled workflows. **Decision needed before implementation.**
+- Improve the Dashboard empty state to distinguish "no fields configured for this type" from "common form is empty" and provide a direct link to `/asset-types/:id` → Configure Form.
+
+**Acceptance checks.**
+
+- Create a type from the Dashboard "+ Add Asset" modal → the form immediately shows every active common-form field with correct required/show-in-list/order.
+- Create a type from the Dashboard "+ Add Asset Type" modal, then navigate to `/asset-types/:id/new` → same initialized form.
+- Create a type, then save the Common Form with a new field → the new field appears on the type (existing `syncCommonFieldOrder` behavior preserved).
+- A type whose common form is genuinely empty shows a clear "Common Form has no fields yet — configure it" message with a link to `/common-form`.
+- Existing types with manually added fields are not disturbed by the initialization step.
+
+---
+
+### Bug 2 — Automation rules fire only on Save, not live while the user edits the form
+
+**User-visible symptom.** The user configures a rule like "when `status` equals `Issued`, set `issue_date` to today". While filling the form, changing `status` to `Issued` does nothing visible. Only after pressing Save does `issue_date` get populated.
+
+**Root cause (confirmed by reading the code).**
+
+1. [DynamicForm.jsx](./client/src/components/DynamicForm.jsx) handles `onChange` for every field type by calling `setValues(v => ({ ...v, [field.key]: ... }))`. The only `useEffect` in the component (lines 12–29) auto-fills `auto_date` fields with today's date. **It never reads, receives, or evaluates automation rules.**
+2. [AutomationBuilder.jsx](./client/src/components/AutomationBuilder.jsx) is a CRUD UI for rules. It calls `api.automations.list(assetTypeId)` and `api.commonForm.automations.list()` to display rules, and `create`/`remove` to mutate them. It does **not** pass rules to `DynamicForm`.
+3. The server-side rule evaluators are [applyAutomations](./server/src/modules/assets/automation.js) (lines 76–101) and [applyCommonAutomations](./server/src/modules/commonForms/automationService.js) (lines 64–83). Both are invoked from exactly two call sites:
+   - [assets/service.js:157](./server/src/modules/assets/service.js) inside `createAsset`.
+   - [assets/service.js:205–209](./server/src/modules/assets/service.js) inside `updateAsset`.
+4. No endpoint exposes the merged active rule set to the form-rendering client. `GET /asset-types/:id/automations` exists but returns only asset-type rules, not common-form rules, and is consumed only by `AutomationBuilder`.
+
+**Why the current server-side behavior must remain.** Rules applied on the server are the authoritative source of truth. A direct API caller (curl, script, integration) must not be able to bypass them. Live client-side evaluation is a UX layer on top of, not a replacement for, server evaluation.
+
+**Planned correction (Phase 2).**
+
+- Define a **single rule-evaluation contract** shared by client and server. Same condition semantics (`filled`, `empty`, `changed`, `equals`), same action semantics (`set_value`, `set_today`), same type coercion rules (number, boolean, dropdown, date), same precedence between common-form and asset-type rules.
+- Expose the merged active rule set to the form. Two viable shapes:
+  - (a) Extend `GET /asset-types/:id/assets/form` to return `{ fields, automations }` where `automations` is the ordered list of common-form rules followed by asset-type rules.
+  - (b) Add a dedicated `GET /asset-types/:id/automations/effective` that returns the merged list. Option (a) is one round-trip; option (b) is cleaner separation. **Decision needed.**
+- In `DynamicForm`, after every `setValues` triggered by a user edit, run the evaluator over the next values and apply any rule whose source field changed. Use a bounded fixed-point loop (e.g. max 10 passes) to support chained rules and prevent cycles.
+- Track which fields were last filled by automation so a manual user edit to that field clears the "automated" flag and prevents the next evaluation pass from silently overwriting the manual value.
+- Keep server-side `applyAutomations` and `applyCommonAutomations` exactly as they are on create/update. The client preview and the server result must match; if they diverge, the server wins and the UI should re-render with the server's values.
+- Add tests for: rule order, chained rules, manual override after automation, clearing a field that was auto-filled, `changed` condition with previousValues, cycle detection, dropdown/number/boolean coercion parity between client and server.
+
+**Acceptance checks.**
+
+- Configure "when A equals X, set B to Y". Open the asset form, change A to X → B updates immediately, before Save.
+- Configure "when A is filled, set B to today". Type any value into A → B becomes today's date.
+- Configure a chain: A → B, B → C. Changing A updates B and then C in the same tick.
+- Manually clear B after automation filled it → B stays cleared until A changes again.
+- Save the form → the persisted values match exactly what the live preview showed.
+- Call `POST /asset-types/:id/assets` directly with the same payload but with B omitted → the server still applies the rule and persists B.
+
+---
+
+## 6. Extension scope A — Multi-user, roles, permissions, and per-user customization
+
+### 6.1 What the user asked for
+
+- Multiple users, not just one admin.
+- Admin can define per-user permissions: who can create assets, which assets they can see, which they can edit, who can customize the common form, who can create their own asset types and fields.
+- **Per-user customization**: one user may want a different set of asset types, different fields, a different common form, different reports. One user's settings must not affect another user's.
+- Admin retains full rights over everything.
+- Reports must be user-scoped: each user sees only their own assets in reports.
+
+### 6.2 Why this is a data-model and backend-authorization change, not just a UI change
+
+Today every table is global. Hiding buttons in React would not prevent a curious user from calling `GET /api/v1/assets/:publicId` with someone else's UUID, or `PATCH /api/v1/fields/:id` with someone else's field id. **Every list, detail, create, update, delete, bulk, form, automation, export, and report query must be scoped and authorized on the server.** The frontend hides/disables for usability; the backend enforces for security.
+
+### 6.3 Proposed identity and permission model
+
+- The existing single account becomes the **admin** after migration. Admin can:
+  - Create, deactivate, reactivate, and delete users.
+  - Reset passwords (with a forced-change-on-next-login flag).
+  - Grant and revoke individual permissions.
+  - View and manage every user's asset types, fields, dropdowns, forms, automations, assets, reports, and email configuration.
+  - Manage global SMTP settings.
+- New accounts are **regular users** with a least-privilege default permission bundle (decision needed; recommended default: can view and create own assets, cannot create asset types or fields until granted).
+- Permissions are **explicit capabilities**, not a single `role` enum. A capability-based model lets the admin grant exactly what's needed.
+
+#### Suggested capability list
+
+| Area | Capabilities |
 |---|---|
-| Accounts | Create/deactivate users, reset accounts, assign permissions |
-| Asset types | View, create, edit, delete own; admin access to all |
-| Assets | View, create, edit, delete own; optionally grant more specific capabilities |
-| Schema/configuration | Create/edit own fields, dropdowns, forms, automations |
-| Reports/exports | View and export only in-scope records |
-| Email | Configure own permitted notification rules/templates/recipients; view own history |
-| Global settings | SMTP setup and global configuration, admin only |
+| Accounts (admin-only) | `users.create`, `users.deactivate`, `users.reset_password`, `users.assign_permissions`, `users.delete` |
+| Asset types | `asset_types.view_own`, `asset_types.create_own`, `asset_types.edit_own`, `asset_types.delete_own`, `asset_types.view_all` (admin) |
+| Assets | `assets.view_own`, `assets.create_own`, `assets.edit_own`, `assets.delete_own`, `assets.bulk_own`, `assets.view_all` (admin) |
+| Schema/config | `fields.manage_own`, `dropdowns.manage_own`, `common_form.manage_own`, `automations.manage_own` |
+| Reports/exports | `reports.view_own`, `reports.export_own`, `reports.view_all` (admin) |
+| Email | `email.rules.manage_own`, `email.templates.manage_own`, `email.history.view_own`, `email.history.view_all` (admin) |
+| Global settings (admin-only) | `smtp.configure`, `branding.manage` |
 
-The final permission UI should let the admin grant these capabilities independently. The exact default permission bundle for newly created users should be agreed before implementation; a least-privilege default is recommended.
+The admin UI should present these as a checklist per user. The exact default bundle for newly created users must be agreed before implementation.
 
-#### Suggested data-model direction
+### 6.4 Proposed data-model direction
 
-Add ownership/scope relationships for user-managed records and enforce them consistently. A practical design is to add owner user IDs to user-owned asset types, field definitions, dropdowns, common forms, and notification configurations, with assets either carrying an owner ID or deriving a validated owner through their asset type. Use owner-aware unique constraints for field keys and dropdown slugs where users must be able to create similarly named definitions independently.
+Add an `owner_user_id` column to every user-managed table. Convert globally-unique constraints into owner-scoped unique constraints so two users can independently create a field with key `serial_number` or a dropdown with slug `department`.
 
-The existing single common form becomes one common form per owner. Common-form fields and rules remain tied to that owner’s form. Asset-type forms and automations must only reference fields visible to the same owner (or an explicitly shared/admin-managed catalog, if that model is selected).
+| Table | New column(s) | Constraint changes |
+|---|---|---|
+| `users` | `role ENUM('admin','user') NOT NULL DEFAULT 'user'`, `is_active BOOLEAN NOT NULL DEFAULT TRUE`, `must_change_password BOOLEAN NOT NULL DEFAULT FALSE` | — |
+| `user_permissions` (new) | `user_id`, `capability VARCHAR(80)` | PK `(user_id, capability)` |
+| `asset_types` | `owner_user_id BIGINT UNSIGNED NOT NULL` | Drop `UNIQUE(slug)`; add `UNIQUE(owner_user_id, slug)` |
+| `dropdowns` | `owner_user_id` | Drop `UNIQUE(slug)`; add `UNIQUE(owner_user_id, slug)` |
+| `dropdown_options` | (inherits via dropdown) | Unchanged |
+| `field_definitions` | `owner_user_id` | Drop `UNIQUE(key)`; add `UNIQUE(owner_user_id, key)` |
+| `asset_type_fields` | (inherits via asset_type) | Unchanged |
+| `assets` | `owner_user_id` (denormalized for fast scoping) **or** derive via `asset_type.owner_user_id`. Denormalizing is recommended for query simplicity and indexable list/report queries. | Add `INDEX(owner_user_id, asset_type_id, created_at)` |
+| `asset_automations` | (inherits via asset_type) | Unchanged |
+| `common_forms` | Replace `id TINYINT PRIMARY KEY` with `id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY`, add `owner_user_id BIGINT UNSIGNED NOT NULL UNIQUE` | One common form per user |
+| `common_form_fields` | (inherits via common_form) | Unchanged |
+| `common_form_automations` | (inherits via common_form) | Unchanged |
+| `app_settings` | Stays global (branding, SMTP). Add `scope ENUM('global','user')` and `owner_user_id NULL` only if per-user settings are ever needed. For now SMTP is global, branding is global. | — |
 
-The migration must preserve existing records and assign them to the existing admin account. Admin-wide access should be implemented as an explicit authorized scope, not by leaving all records accidentally unowned.
+**Migration of existing data.** All current rows in `asset_types`, `dropdowns`, `field_definitions`, `assets`, `common_forms` (the single id=1 row), `common_form_fields`, `common_form_automations`, `asset_automations`, `asset_type_fields` must be assigned to the existing admin user. The migration must run inside a transaction and must be idempotent.
 
-### SMTP, templates, notification rules, and delivery history
+**Hard-coded `COMMON_FORM_ID = 1`.** [commonForms/service.js:5](./server/src/modules/commonForms/service.js) and [commonForms/automationService.js:6](./server/src/modules/commonForms/automationService.js) both hard-code `const COMMON_FORM_ID = 1`. After the migration, the common form id must be resolved per request from `req.session.userId` (e.g. `SELECT id FROM common_forms WHERE owner_user_id = ?`). Every query in those two files must be updated.
 
-- SMTP configuration is **global and admin-only**, not user-specific. Provide a settings form with host, port, TLS mode, username, password, sender address/name, and a test-connection/test-email action as appropriate.
-- Encrypt stored SMTP secrets using a deployment secret/key that is not stored in the same database row. Never return the password from an API response; expose only whether a credential is configured and safe connection metadata.
-- Users can configure only the notification rules/templates/recipients they are permitted to manage. Rules are scoped to the owner’s asset types and cannot refer to another user’s data.
-- Support asset-created and selected-field-changed events. A rule should identify its asset type, trigger, field/condition if applicable, recipient list, subject, and body template.
-- Provide a controlled set of template placeholders, such as asset type and configured field values. Validate unknown placeholders and escape values appropriately for the email format.
-- Store a delivery record per notification with owner, asset reference, event, recipients, template snapshot or version, status, timestamps, and sanitized error information. Users see only their own history; admin can see all history.
-- Avoid sending mail synchronously inside the asset-save request. Record an email/outbox item transactionally with the asset change, then deliver it asynchronously with bounded retries and visible failure status. This prevents slow mail servers from blocking asset saves and avoids silently losing notifications.
-- Show a toast that accurately describes delivery state. For queued delivery, show “notification queued”; show “sent” only after confirmed successful delivery. Surface failures through a clear status/history entry and UI notification.
-- Add rate limiting/loop protection and avoid sending update emails when no configured tracked field actually changed.
+**Cross-user FK safety.** `asset_type_fields.field_definition_id` currently references any field. After multi-user, it must only reference fields owned by the same user (or explicitly shared fields, if a sharing model is chosen — see Risks). The service layer must validate this on every write.
 
-## Implementation phases
+### 6.5 Proposed backend authorization pattern
 
-### Phase 0 — Baseline and compatibility
+- Extend the session to include `role` and a cached `permissions` set. Refresh on login and after any permission change.
+- Add a `requirePermission('capability')` middleware that throws `403 FORBIDDEN` when the session user lacks the capability.
+- Add an `assertOwnership(table, id, userId)` helper used by every service function that reads or mutates a single record by id.
+- Add a `scopeQuery(userId, role)` helper that appends `WHERE owner_user_id = ?` for regular users and no-op for admin (or `WHERE owner_user_id IN (...)` if admin impersonation is ever added).
+- Apply both to every route in [routes.js](./server/src/routes.js). No route should remain with only `requireAuth`.
+- Admin-wide access must be an **explicit** authorized scope (`role === 'admin'` or `assets.view_all`), not an accident of missing WHERE clauses.
 
-1. Add focused tests for the existing asset-type, form, automation, and authentication behavior before changing it.
-2. Capture a safe database backup and document the current migration state before applying schema changes.
-3. Define the regular-user default permissions, whether any configuration can be shared, and SMTP delivery expectations.
+### 6.6 Proposed frontend changes
 
-**Exit criteria:** Existing single-admin workflows and records are covered by regression tests; permission defaults and data ownership rules are decided.
+- Add a "Users" admin page (visible only to admin) for account creation, deactivation, password reset, and permission assignment.
+- Gate every nav item, button, and modal action by the current user's permissions. The `AuthContext` should expose `can('capability')`.
+- The Common Form page, Fields page, Dropdowns page, Asset Type page, Reports page, and Settings page all become user-scoped automatically because the API returns only the current user's data. No UI change is needed beyond permission gating.
+- Reports page must stop assuming it can fetch every asset type. It already calls `api.assetTypes.list()` which will naturally return only the user's types after scoping.
+- Add a "Switch to user view" toggle for admin (optional, useful for support).
 
-### Phase 1 — Fix asset form initialization and empty-state UX
+### 6.7 Acceptance checks
 
-1. Ensure common-form fields are attached to a new asset type before the type’s first form is requested.
-2. Preserve fields already configured for an asset type; make initialization idempotent and transactional where needed.
-3. Verify the dashboard’s “create type and add asset” flow and the asset-type page’s “Add Asset” flow.
-4. If the configured form is genuinely empty, show a clear empty state and a direct route to configure the form rather than a blank grid.
+- A regular user cannot read, update, or delete another user's asset, asset type, field, dropdown, common form, automation, or report by guessing IDs or calling endpoints directly.
+- A regular user cannot escalate their own permissions.
+- Admin can create a user, grant a specific capability, and see that capability take effect immediately on the user's next request (or next login, depending on session refresh strategy).
+- Two users can each create a field with key `serial_number` and a dropdown with slug `department` without conflict.
+- Each user's Common Form is independent; saving one does not affect the other.
+- Reports and XLSX export include only records the requesting user may see.
+- The existing single-admin installation migrates without data loss; the admin still sees every pre-existing record.
+- Deactivating a user immediately invalidates their sessions.
 
-**Acceptance checks:**
+---
 
-- Creating a type from the dashboard and immediately selecting it displays configured common-form fields.
-- Creating a type through the type-management flow gives the same initialized form behavior.
-- Existing per-type fields and required flags are not unexpectedly replaced.
-- An intentionally empty form gives a useful explanation and configuration action.
+## 7. Extension scope B — Global SMTP, per-user email rules, templates, history, and toasts
 
-### Phase 2 — Live form automations
+### 7.1 What the user asked for
 
-1. Define a shared automation input/output shape for common and asset-type rules.
-2. Load active rules with the form (or via one predictable request) and evaluate them in the frontend when relevant source fields change.
-3. Update target controls immediately, including date, number, boolean, and dropdown values.
-4. Make precedence between common-form and asset-type rules explicit and consistent.
-5. Keep backend evaluation and validation on create/update as the source of truth.
-6. Add tests for rule order, chained rules, manual override/clear behavior, empty and changed values, and cycle/loop prevention.
+- SMTP configuration in Settings, **managed once by admin**, used by everyone.
+- Per-asset-type, per-field-change email triggers. Example: on the Laptop asset type, when `status` becomes `Issued`, send an email to a configured recipient list.
+- Admin controls which users may configure email rules for themselves.
+- Email templates with placeholders.
+- Recipient management.
+- A toast that accurately says whether the email was sent.
+- Email history: each user sees their own; admin sees everyone's.
+- One user's email settings must not affect another user's.
 
-**Acceptance checks:**
+### 7.2 Current state
 
-- Matching rules update dependent fields before the save button is pressed.
-- Non-matching rules do not change values.
-- Saving produces the same final values as the live preview.
-- Direct API calls still apply the rules and validate their results.
+- No mail transport dependency in [server/package.json](./server/package.json). `nodemailer` (or equivalent) must be added.
+- No email-related tables in [server/migrations](./server/migrations).
+- [Settings.jsx](./client/src/pages/Settings.jsx) only handles branding and password change.
+- [app_settings](./server/migrations/005_branding.sql) currently stores only `favicon_data_url` and `app_icon_data_url`.
 
-### Phase 3 — Multi-user identity and authorization foundation
+### 7.3 Proposed SMTP configuration (global, admin-only)
 
-1. Add user status/role/permission persistence and admin-only user-management endpoints/UI.
-2. Backfill current records/configuration to the existing admin.
-3. Add owner/scope columns and owner-aware constraints to asset types, definitions, dropdowns, common forms, assets/configuration as selected in the final schema.
-4. Add centralized server-side permission checks and ownership-scoped service/query helpers.
-5. Update each API surface, including bulk operations, reports, exports, forms, automations, and detail routes.
-6. Add frontend permission-aware navigation and actions, while relying on backend authorization for enforcement.
-7. Add migration rollback/backup guidance and verify existing admin data remains accessible.
+- Store SMTP config in `app_settings` (or a dedicated `smtp_settings` single-row table) with keys: `smtp_host`, `smtp_port`, `smtp_secure` (boolean), `smtp_user`, `smtp_password_encrypted`, `smtp_from_email`, `smtp_from_name`, `smtp_reply_to`, `smtp_enabled`.
+- **Encrypt the password at rest** using a deployment secret read from `process.env.SMTP_ENCRYPTION_KEY` (new env var, added to [env.js](./server/src/config/env.js) and [.env.example](./server/.env.example)). Use AES-256-GCM with a random IV per encryption; store `iv:tag:ciphertext` base64-encoded.
+- **Never return the password** from any API. The GET response should include `passwordConfigured: true|false` and nothing else about the secret.
+- Add a "Send test email" action that delivers a fixed template to a provided address and reports success/failure synchronously (this one is acceptable to do synchronously because it's an explicit admin action with a visible spinner).
+- Add a "Test connection" action that performs SMTP handshake without sending.
+- Rate-limit test actions to prevent abuse.
 
-**Acceptance checks:**
+### 7.4 Proposed email templates, recipients, and rules (per-user)
 
-- A regular user cannot access another user’s records by changing IDs or calling endpoints directly.
-- A user cannot edit another user’s forms, fields, dropdowns, rules, recipients, or report configuration.
-- Admin can access all users and grant/revoke permissions.
-- Exports and aggregate reports include only records the requesting user may see.
-- Existing single-user installation migrates without data loss and remains admin-accessible.
+New tables:
+
+- `email_templates` — `id`, `owner_user_id`, `name`, `subject_template`, `body_template` (TEXT, supports `{{placeholder}}`), `is_active`, timestamps.
+- `email_recipients` — `id`, `owner_user_id`, `name`, `email`, `is_active`, timestamps.
+- `email_rules` — `id`, `owner_user_id`, `asset_type_id`, `trigger_type ENUM('asset_created','field_changed')`, `trigger_field_id NULL` (required when `field_changed`), `trigger_condition ENUM('any_change','equals','not_equals','filled','empty') NULL`, `trigger_condition_value NULL`, `template_id`, `is_active`, timestamps.
+- `email_rule_recipients` — join table `(rule_id, recipient_id)`.
+- `email_outbox` — transactional outbox: `id`, `owner_user_id`, `rule_id`, `asset_public_id`, `event_type`, `payload_json` (snapshot of values used to render), `template_snapshot_json` (frozen subject/body at enqueue time), `recipients_json` (frozen list), `status ENUM('pending','sending','sent','failed','cancelled')`, `attempts INT`, `next_attempt_at`, `last_error TEXT NULL`, `created_at`, `sent_at NULL`.
+- `email_history` — could be the same as `email_outbox` with status filtering, or a separate append-only table. Recommend: keep one table (`email_outbox`) and expose it as history with status filters. Simpler, avoids duplication.
+
+**Placeholder contract.** A controlled set, e.g.:
+- `{{asset_type_name}}`, `{{asset_public_id}}`, `{{created_at}}`, `{{updated_at}}`
+- `{{field.<key>}}` for any field on the asset type
+- `{{field.<key>.previous}}` for the pre-update value (only meaningful on `field_changed`)
+- `{{user.email}}`, `{{user.name}}` (the owner of the rule)
+
+Unknown placeholders must be rejected at template-save time with a clear error. Values must be HTML-escaped when the body is HTML, or passed through as plain text when the body is plain text.
+
+**Rule scoping.** A rule's `asset_type_id` must be owned by the same user. A rule's `template_id` and every `recipient_id` must be owned by the same user. The service layer must validate all three on create and update. Admin can view/manage all rules but cannot mix owners (an admin-managed rule still belongs to a specific user).
+
+### 7.5 Proposed delivery model (transactional outbox + async worker)
+
+**Why not send synchronously inside the asset-save request?**
+
+- A slow or unreachable SMTP server would block or fail the asset save.
+- A failed save would silently lose the notification, or a successful save with a failed notification would be indistinguishable from success.
+- Bulk updates (`bulkUpdateAssets` in [assets/service.js:235–245](./server/src/modules/assets/service.js)) loop over many assets; sending inline would multiply latency.
+
+**Proposed flow.**
+
+1. Inside the same transaction that writes the asset change, evaluate every active rule for that asset type and owner. For each matching rule, insert one `email_outbox` row with `status='pending'`, a frozen template snapshot, a frozen recipient list, and a payload snapshot of the values needed to render.
+2. A background worker (a `setInterval` loop inside the same Express process, or a separate `node src/worker.js` process — decision needed) polls `email_outbox` for `status='pending' AND next_attempt_at <= NOW()`, claims rows with an atomic `UPDATE ... WHERE id IN (...) AND status='pending'`, renders the template, sends via nodemailer, and updates status to `sent` or `failed` with `last_error`.
+3. Retries: exponential backoff, max 5 attempts, then `failed` permanently. Transient errors (connection refused, timeout, 4xx SMTP) retry; permanent errors (5xx auth, invalid recipient) fail immediately.
+4. Loop protection: a rule that triggers on `field_changed` for a field that the rule itself sets via automation could in theory loop. The outbox row is written once per user-initiated change, not per automation pass, so this is naturally bounded. Add an explicit guard: never enqueue from inside the worker.
+5. No-op suppression: on update, if no tracked field actually changed value, do not enqueue. Compare `previousValues` to `nextValues` for the trigger field.
+
+**Toast semantics.**
+
+- On save, the API response includes `notificationsQueued: N`.
+- The client shows: `"Asset saved. N notification(s) queued."` (not "sent").
+- A separate `GET /api/v1/email/history?status=sent|failed|pending` lets the UI poll or refresh to show final delivery state.
+- If the worker fails permanently, the history entry shows `failed` with a sanitized error. The user sees this in their history page; admin sees it in the global history page.
+
+### 7.6 Proposed API surface
+
+Admin-only:
+- `GET|PUT /api/v1/settings/smtp` (PUT requires `smtp.configure`)
+- `POST /api/v1/settings/smtp/test-connection`
+- `POST /api/v1/settings/smtp/test-email`
+- `GET /api/v1/email/history/all` (admin, cross-user)
+
+User-scoped:
+- `GET|POST /api/v1/email/templates`, `GET|PATCH|DELETE /api/v1/email/templates/:id`
+- `GET|POST /api/v1/email/recipients`, `GET|PATCH|DELETE /api/v1/email/recipients/:id`
+- `GET|POST /api/v1/email/rules`, `GET|PATCH|DELETE /api/v1/email/rules/:id`
+- `GET /api/v1/email/history` (own only)
+- `POST /api/v1/email/rules/:id/test` (send a test render to the rule's recipients, admin-gated or permission-gated)
+
+### 7.7 Proposed frontend changes
+
+- Settings page gains an admin-only "SMTP" card with host/port/security/user/password/from fields, a "Test connection" button, a "Send test email" button, and a clear "Configured / Not configured" badge. Password field is write-only; the UI never displays the stored value.
+- A new "Email Notifications" nav item (visible to users with `email.rules.manage_own`) with three tabs: Templates, Recipients, Rules.
+- A new "Email History" nav item (visible to users with `email.history.view_own`; admin sees a cross-user toggle).
+- Rule editor: pick asset type → pick trigger (`asset_created` or `field_changed`) → if `field_changed`, pick field and condition → pick template → pick recipients → save.
+- Template editor: name, subject, body with a placeholder picker that inserts `{{field.<key>}}` tokens. Live preview against a sample asset.
+- Toasts: extend [ToastContext.jsx](./client/src/context/ToastContext.jsx) to support a `queued` variant alongside `success` and `error`.
+
+### 7.8 Acceptance checks
+
+- SMTP password is never returned by `GET /api/v1/settings/smtp`; only `passwordConfigured: true|false`.
+- Only admin can edit SMTP. A regular user calling `PUT /api/v1/settings/smtp` gets 403.
+- A regular user can create templates, recipients, and rules only for their own asset types. Cross-owner IDs are rejected with 403/404.
+- Creating an asset that matches a rule enqueues exactly one outbox row per matching rule, in the same transaction as the asset insert. If the asset insert rolls back, the outbox row rolls back too.
+- Updating an asset where the trigger field did not change enqueues nothing.
+- Updating an asset where the trigger field changed from `A` to `B` enqueues one row with `previous=A`, `next=B` in the payload.
+- The worker delivers pending rows, marks them `sent`, and records `sent_at`. On transient failure it retries with backoff. On permanent failure it marks `failed` with a sanitized error.
+- User sees only their own history. Admin sees all history with a user filter.
+- Toast on save says "queued", not "sent". History page reflects final delivery state.
+- Two users can each have a rule on their own "Laptop" asset type with the same field name `status` without interference.
+- Killing and restarting the worker does not duplicate sends (claim is atomic via `UPDATE ... WHERE status='pending'`).
+
+---
+
+## 8. Implementation phases
+
+### Phase 0 — Baseline, decisions, and safety net
+
+1. Capture a full database backup and document the current migration state.
+2. Add focused regression tests for the existing single-admin behavior: asset-type creation, form initialization, automation evaluation on save, common-form sync, dropdown option rename cascade, reports aggregation, branding, password change.
+3. Resolve the open decisions listed in §10.
+4. Agree on the default permission bundle for newly created users.
+5. Agree on the SMTP encryption key management approach (env var vs. secrets manager).
+
+**Exit criteria:** Existing workflows are covered by tests; decisions are recorded; backup is verified restorable.
+
+### Phase 1 — Fix Bug 1 (form initialization) and improve empty-state UX
+
+1. Modify `createAssetType` in [assetTypes/service.js](./server/src/modules/assetTypes/service.js) to call `attachCommonFields(newId, conn)` inside the same transaction as the type insert.
+2. Decide and implement the form-reading behavior for genuinely-empty types (auto-attach vs. `uninitialized` flag).
+3. Update [Dashboard.jsx](./client/src/pages/Dashboard.jsx) empty state to distinguish "no fields configured" from "common form is empty" and link to the right configuration page.
+4. Verify the AssetType page "+ Add Asset" flow and the AssetEditor flow for freshly created types.
+5. Add tests: create type → form has common fields; create type with empty common form → clear empty state; create type → save common form with new field → type picks it up.
+
+**Exit criteria:** Both reported reproduction paths show the configured form immediately after type creation. No regression in existing type/form flows.
+
+### Phase 2 — Fix Bug 2 (live automations)
+
+1. Define the shared rule-evaluation contract (conditions, actions, coercion, precedence, cycle bound).
+2. Expose the merged active rule set to the form (extend the form endpoint or add a dedicated one).
+3. Implement the evaluator in [DynamicForm.jsx](./client/src/components/DynamicForm.jsx) with manual-override tracking and bounded fixed-point looping.
+4. Keep server-side evaluation authoritative; ensure client and server produce identical results for identical inputs.
+5. Add tests for every condition/action combination, chained rules, manual override, clearing, cycle prevention, and client/server parity.
+
+**Exit criteria:** Rules fire live in the form; saved values match the live preview; direct API calls still apply rules server-side.
+
+### Phase 3 — Multi-user identity, ownership, and authorization
+
+1. Add `role`, `is_active`, `must_change_password` to `users`. Add `user_permissions` table.
+2. Add `owner_user_id` to every user-managed table. Convert globally-unique constraints to owner-scoped.
+3. Backfill all existing rows to the current admin user. Convert the single `common_forms` row to admin-owned and switch the table to auto-increment PK with a unique owner constraint.
+4. Replace every hard-coded `COMMON_FORM_ID = 1` with a per-request lookup.
+5. Extend the session to carry role and permissions. Add `requirePermission` and `assertOwnership` middleware/helpers.
+6. Update every service function in [assetTypes](./server/src/modules/assetTypes), [assets](./server/src/modules/assets), [commonForms](./server/src/modules/commonForms), [fields](./server/src/modules/fields), [dropdowns](./server/src/modules/dropdowns), and the reports aggregation to scope by owner.
+7. Add admin-only user-management endpoints and a Users page in the frontend.
+8. Add `can('capability')` to [AuthContext.jsx](./client/src/context/AuthContext.jsx) and gate every nav item, button, and modal action.
+9. Add migration rollback/backup guidance and verify existing admin data remains accessible.
+10. Add tests for every capability allowed and denied, direct API requests with guessed IDs, bulk actions, report/export scope, deactivated accounts.
+
+**Exit criteria:** A regular user cannot access another user's records by any means; admin can manage all users and data; existing single-admin installation migrates cleanly.
 
 ### Phase 4 — Global SMTP and user-scoped email notifications
 
-1. Add admin-only SMTP configuration, encrypted secret storage, and a test-connection/test-email flow.
-2. Add permission-gated, owner-scoped email templates, recipients, and event rules.
-3. Add transactional outbox and delivery worker/retry handling; include startup/shutdown behavior and operational logging.
-4. Add user-scoped history and admin-wide history with useful statuses and filtering.
-5. Add accurate queued/sent/failed toasts and notification status refresh.
-6. Verify trigger matching for asset creation and configured field updates, including multiple recipient handling and no-op updates.
+1. Add `nodemailer` (or equivalent) to [server/package.json](./server/package.json).
+2. Add `SMTP_ENCRYPTION_KEY` to [env.js](./server/src/config/env.js) and [.env.example](./server/.env.example).
+3. Add migrations for `smtp_settings` (or `app_settings` keys), `email_templates`, `email_recipients`, `email_rules`, `email_rule_recipients`, `email_outbox`.
+4. Implement admin-only SMTP CRUD with encrypted password storage and test-connection/test-email actions.
+5. Implement user-scoped templates, recipients, and rules CRUD with owner validation.
+6. Implement transactional outbox enqueue inside `createAsset` and `updateAsset` (and `bulkUpdateAssets`).
+7. Implement the delivery worker with atomic claim, retries, backoff, and permanent-failure handling. Decide single-process interval vs. separate worker process.
+8. Implement history endpoints (own + admin-all) and the History page.
+9. Extend [ToastContext.jsx](./client/src/context/ToastContext.jsx) with a `queued` variant and update save flows to use it.
+10. Add tests for credential secrecy, owner validation, trigger matching, no-op suppression, retry behavior, duplicate prevention on worker restart, and history scoping.
 
-**Acceptance checks:**
-
-- SMTP credentials are never returned by settings APIs or exposed in client code.
-- Only admin can edit global SMTP settings; permitted users can edit only their own notification configuration.
-- One user’s rule cannot send using another user’s recipients/template or expose another user’s asset data.
-- Create and field-change triggers send the expected message; unchanged/unmatched updates do not.
-- Users see only their history; admin can see all history.
-- Transient delivery failures retry and remain visible; permanent failures are not reported as successful.
+**Exit criteria:** SMTP credentials never leak; rules fire on the correct events; outbox is transactional with the asset change; worker delivers reliably; history is correctly scoped; toasts are accurate.
 
 ### Phase 5 — Regression, security, and deployment validation
 
-1. Run backend tests, frontend production build, migration checks, and end-to-end flows.
-2. Test role/ownership bypass attempts directly against the API.
-3. Test with two ordinary users plus admin, including same-named asset types and fields.
-4. Test SMTP success/failure, worker restart, retry exhaustion, and history access.
-5. Update README/deployment documentation for new environment secrets, migrations, worker operation, and admin setup.
+1. Run the full backend test suite, frontend production build, migration checks on a fresh database and on a populated existing database.
+2. Penetration-test the authorization layer: guessed IDs, direct API calls, bulk actions, export endpoints, report aggregation, email history.
+3. Test with two ordinary users plus admin: same-named asset types, same field keys, same dropdown slugs, independent common forms, independent email rules.
+4. Test SMTP success, transient failure with retry, permanent failure, worker restart mid-delivery, and history access.
+5. Update [README.md](./README.md), [docker-compose.example.yaml](./docker-compose.example.yaml), and [.env.example](./server/.env.example) for new secrets, the worker process model, and admin setup.
+6. Verify the Docker image starts cleanly, runs migrations, and serves both API and frontend.
 
-## Cross-cutting test plan
+---
 
-- **Form initialization:** no common fields, existing common fields, removed common fields, inactive fields, newly created type, and type with manually configured fields.
-- **Automation:** every supported condition and action; supported field types; overlapping rules; field clearing; client/server result consistency; malformed or stale rule references.
-- **Authorization:** each capability allowed and denied; direct API requests; guessed IDs; bulk actions; report/export scope; deactivated accounts.
-- **Data isolation:** cross-user asset IDs, asset-type IDs, field IDs, dropdown IDs, common-form IDs, automation IDs, notification IDs, and email-history IDs.
-- **Migrations:** fresh database and populated existing single-admin database; rerun/idempotency; backup/restore verification.
-- **Email:** valid and invalid SMTP settings, credential secrecy, recipient validation, create/update triggers, retries, duplicate prevention, audit/history scope, and accurate UI statuses.
+## 9. Cross-cutting test plan
 
-## Risks and decisions to resolve before implementation
+- **Form initialization:** no common fields, existing common fields, removed common fields, inactive fields, newly created type, type with manually configured fields, type created via Dashboard modal, type created via Asset Type page.
+- **Live automations:** every condition (`filled`, `empty`, `changed`, `equals`) × every action (`set_value`, `set_today`) × every field type (text, multiline, number, boolean, date, auto_date, dropdown, quantity). Overlapping rules, chained rules, manual override, clearing an auto-filled field, cycle prevention, client/server parity.
+- **Authorization:** each capability allowed and denied; direct API requests with guessed IDs; bulk actions; report/export scope; deactivated accounts; session refresh after permission change; admin impersonation (if added).
+- **Data isolation:** cross-user asset IDs, asset-type IDs, field IDs, dropdown IDs, common-form IDs, automation IDs, template IDs, recipient IDs, rule IDs, outbox IDs.
+- **Migrations:** fresh database, populated existing single-admin database, rerun/idempotency, backup/restore verification, constraint conversion (global UNIQUE → owner-scoped UNIQUE) without data loss.
+- **Email:** valid and invalid SMTP settings, credential secrecy in every API response, recipient validation, create/update triggers, no-op suppression, retries with backoff, permanent failure handling, duplicate prevention on worker restart, audit/history scope, accurate UI toasts.
 
-1. **Ownership model:** Decide whether any fields/dropdowns or asset-type schemas are shared across users, or whether every user-created schema is private by default. The requested isolation suggests private-by-default.
-2. **Permissions:** Confirm the exact permission combinations and default permissions for new users. A broad “user” role alone may not meet the requested per-action controls.
-3. **Admin access:** Specify whether admin edits user configuration in place, can only inspect it, or may do both. The request indicates full rights, so this plan assumes both.
-4. **Legacy records:** Existing assets/types/forms are global today. Migration must assign them to the current admin and prevent accidental visibility to new users.
-5. **Rule conflicts:** Live evaluation must not silently overwrite manual edits or enter cycles. Precedence and override semantics need explicit tests.
-6. **SMTP operations:** SMTP availability and remote-provider limits are outside the app’s control. Queue status and retries must be visible; a “sent” toast cannot be shown before delivery succeeds.
-7. **Email security:** Templates and user-provided recipients can expose asset data or enable abuse. Apply ownership checks, permission checks, placeholder restrictions, and sensible send limits.
-8. **Deployment:** A background outbox worker needs a documented process model. If the app remains a single container, ensure it starts/stops safely and avoids duplicate workers when scaled.
+---
 
-## Review limitations
+## 10. Risks and open decisions (must resolve before implementation)
 
-This was a source-level architecture and behavior review. No database connection, production deployment, or live SMTP configuration was inspected. No migrations, builds, or tests were run because the requested work was documentation-only and no application code was changed. The diagnosis of the empty add-asset form is based on the reviewed dashboard and server initialization paths and should be confirmed with the reported reproduction before implementing Phase 1.
+1. **Ownership model.** Is every user-created schema strictly private, or is there a "shared catalog" of admin-managed fields/dropdowns that all users can reference? The request implies private-by-default. **Decision needed.**
+2. **Default permissions for new users.** What can a freshly created user do out of the box? Recommended least-privilege: view own assets, create own assets, no schema management until granted. **Decision needed.**
+3. **Admin edit semantics.** Can admin edit a user's configuration in place, or only inspect it? The request says "admin ke paas pure right ho kam jyada karne ke" — assume both inspect and edit. **Confirm.**
+4. **Legacy record ownership.** All existing data must be assigned to the current admin during migration. Confirm this is acceptable, or specify a different target owner.
+5. **Common form per user vs. per user + admin-shared template.** Should a new user start with an empty common form, or inherit a copy of the admin's current common form as a starting point? **Decision needed.**
+6. **Rule conflicts and precedence.** When a common-form rule and an asset-type rule both target the same field, which wins? Current server code applies common first, then asset-type (asset-type wins). Preserve this or change? **Confirm.**
+7. **Live automation override semantics.** If automation fills field B and the user manually clears B, should the next evaluation pass re-fill B? Recommended: no — once manually touched, B is "user-owned" until the source field changes again. **Confirm.**
+8. **SMTP encryption key management.** `SMTP_ENCRYPTION_KEY` as an env var is the simplest approach. If the deployment uses a secrets manager, document the retrieval path. **Decision needed.**
+9. **Worker process model.** Single-process `setInterval` inside Express is simplest for a single-container deployment but risks duplicate sends if the container is scaled horizontally. A separate worker process with a lock (e.g. MySQL `GET_LOCK`) is safer. **Decision needed.**
+10. **Email rate limiting.** Per-user daily/hourly send caps to prevent abuse. Recommended: configurable global cap plus per-user cap. **Decision needed.**
+11. **Template format.** Plain text vs. HTML vs. both. HTML requires careful escaping to prevent injection of user-controlled field values into markup. Recommend plain text by default with an opt-in HTML mode that auto-escapes all placeholders. **Decision needed.**
+12. **Deployment secrets.** New env vars (`SMTP_ENCRYPTION_KEY`, possibly `EMAIL_WORKER_INTERVAL_MS`, `EMAIL_MAX_ATTEMPTS`) must be added to [docker-compose.example.yaml](./docker-compose.example.yaml) and documented in [README.md](./README.md).
+
+---
+
+## 11. Review limitations
+
+This was a source-level architecture and behavior review. No database connection, production deployment, or live SMTP configuration was inspected. No migrations, builds, or tests were executed because the requested work was documentation-only and no application code was changed. The diagnosis of both bugs is based on reading the current source at the file:line references cited above and should be re-confirmed against the reported reproduction steps before implementing Phase 1 and Phase 2.
+
+---
+
+## 12. File reference index
+
+Backend:
+- [server/src/app.js](./server/src/app.js)
+- [server/src/routes.js](./server/src/routes.js)
+- [server/src/server.js](./server/src/server.js)
+- [server/src/config/db.js](./server/src/config/db.js)
+- [server/src/config/env.js](./server/src/config/env.js)
+- [server/src/config/migrate.js](./server/src/config/migrate.js)
+- [server/src/middleware/auth.js](./server/src/middleware/auth.js)
+- [server/src/middleware/csrf.js](./server/src/middleware/csrf.js)
+- [server/src/middleware/errorHandler.js](./server/src/middleware/errorHandler.js)
+- [server/src/middleware/rateLimit.js](./server/src/middleware/rateLimit.js)
+- [server/src/modules/assets/service.js](./server/src/modules/assets/service.js)
+- [server/src/modules/assets/controller.js](./server/src/modules/assets/controller.js)
+- [server/src/modules/assets/automation.js](./server/src/modules/assets/automation.js)
+- [server/src/modules/assets/automationController.js](./server/src/modules/assets/automationController.js)
+- [server/src/modules/assetTypes/service.js](./server/src/modules/assetTypes/service.js)
+- [server/src/modules/assetTypes/controller.js](./server/src/modules/assetTypes/controller.js)
+- [server/src/modules/commonForms/service.js](./server/src/modules/commonForms/service.js)
+- [server/src/modules/commonForms/controller.js](./server/src/modules/commonForms/controller.js)
+- [server/src/modules/commonForms/automationService.js](./server/src/modules/commonForms/automationService.js)
+- [server/src/modules/commonForms/automationController.js](./server/src/modules/commonForms/automationController.js)
+- [server/src/modules/fields/service.js](./server/src/modules/fields/service.js)
+- [server/src/modules/fields/controller.js](./server/src/modules/fields/controller.js)
+- [server/src/modules/dropdowns/service.js](./server/src/modules/dropdowns/service.js)
+- [server/src/modules/dropdowns/controller.js](./server/src/modules/dropdowns/controller.js)
+- [server/src/modules/auth/service.js](./server/src/modules/auth/service.js)
+- [server/src/modules/auth/controller.js](./server/src/modules/auth/controller.js)
+- [server/src/modules/branding/service.js](./server/src/modules/branding/service.js)
+- [server/src/modules/branding/controller.js](./server/src/modules/branding/controller.js)
+- [server/src/modules/setup/controller.js](./server/src/modules/setup/controller.js)
+- [server/src/modules/setup/turnstile.js](./server/src/modules/setup/turnstile.js)
+- [server/src/utils/validation.js](./server/src/utils/validation.js)
+- [server/src/utils/slug.js](./server/src/utils/slug.js)
+- [server/src/utils/dateTime.js](./server/src/utils/dateTime.js)
+- [server/src/utils/errors.js](./server/src/utils/errors.js)
+- [server/migrations/001_initial.sql](./server/migrations/001_initial.sql)
+- [server/migrations/002_automations.sql](./server/migrations/002_automations.sql)
+- [server/migrations/003_common_form.sql](./server/migrations/003_common_form.sql)
+- [server/migrations/004_common_form_automations.sql](./server/migrations/004_common_form_automations.sql)
+- [server/migrations/005_branding.sql](./server/migrations/005_branding.sql)
+- [server/migrations/999_add_asset_list_columns.sql](./server/migrations/999_add_asset_list_columns.sql)
+
+Frontend:
+- [client/src/App.jsx](./client/src/App.jsx)
+- [client/src/main.jsx](./client/src/main.jsx)
+- [client/src/api/client.js](./client/src/api/client.js)
+- [client/src/context/AuthContext.jsx](./client/src/context/AuthContext.jsx)
+- [client/src/context/ToastContext.jsx](./client/src/context/ToastContext.jsx)
+- [client/src/components/Layout.jsx](./client/src/components/Layout.jsx)
+- [client/src/components/DynamicForm.jsx](./client/src/components/DynamicForm.jsx)
+- [client/src/components/AutomationBuilder.jsx](./client/src/components/AutomationBuilder.jsx)
+- [client/src/components/ui.jsx](./client/src/components/ui.jsx)
+- [client/src/components/Turnstile.jsx](./client/src/components/Turnstile.jsx)
+- [client/src/pages/Dashboard.jsx](./client/src/pages/Dashboard.jsx)
+- [client/src/pages/AssetType.jsx](./client/src/pages/AssetType.jsx)
+- [client/src/pages/AssetEditor.jsx](./client/src/pages/AssetEditor.jsx)
+- [client/src/pages/AssetDetail.jsx](./client/src/pages/AssetDetail.jsx)
+- [client/src/pages/Reports.jsx](./client/src/pages/Reports.jsx)
+- [client/src/pages/CommonForm.jsx](./client/src/pages/CommonForm.jsx)
+- [client/src/pages/Fields.jsx](./client/src/pages/Fields.jsx)
+- [client/src/pages/Dropdowns.jsx](./client/src/pages/Dropdowns.jsx)
+- [client/src/pages/Settings.jsx](./client/src/pages/Settings.jsx)
+- [client/src/pages/Login.jsx](./client/src/pages/Login.jsx)
+- [client/src/pages/Setup.jsx](./client/src/pages/Setup.jsx)
+- [client/src/utils.js](./client/src/utils.js)
+- [client/src/utils/date.js](./client/src/utils/date.js)
+
+Deployment and config:
+- [Dockerfile](./Dockerfile)
+- [docker-compose.example.yaml](./docker-compose.example.yaml)
+- [package.json](./package.json)
+- [server/package.json](./server/package.json)
+- [server/.env.example](./server/.env.example)
+- [client/package.json](./client/package.json)
+- [README.md](./README.md)
