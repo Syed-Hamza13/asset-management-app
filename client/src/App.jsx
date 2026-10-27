@@ -12,6 +12,9 @@ import { AssetDetail } from './pages/AssetDetail';
 import { Login } from './pages/Login';
 import { Setup } from './pages/Setup';
 import { CommonForm } from './pages/CommonForm';
+import { Users } from './pages/Users';
+import { EmailNotifications } from './pages/EmailNotifications';
+import { EmailHistory } from './pages/EmailHistory';
 import { useEffect, useState } from 'react';
 import { api } from './api/client';
 
@@ -19,13 +22,20 @@ function Protected() {
   const { user, booting } = useAuth();
   const location = useLocation();
   if (booting) return <div className="grid min-h-screen place-items-center text-sm text-slate-500">Loading...</div>;
-  return user ? <Outlet /> : <Navigate to="/login" state={{ from: location.pathname }} replace />;
+  if (!user) return <Navigate to="/login" state={{ from: location.pathname }} replace />;
+  if (user.mustChangePassword && location.pathname !== '/settings') return <Navigate to="/settings" replace />;
+  return <Outlet />;
 }
 function Outlet() { return <Layout />; }
+function RequireCap({ cap, children }) {
+  const { can, isAdmin } = useAuth();
+  const allowed = cap === 'admin' ? isAdmin : can(cap);
+  return allowed ? children : <Navigate to="/" replace />;
+}
 function PublicRouter() {
   const [setup, setSetup] = useState(null);
   useEffect(() => { api.setupStatus().then((response) => setSetup(response.data.setupRequired)).catch(() => setSetup(false)); }, []);
   if (setup === null) return <div className="grid min-h-screen place-items-center text-sm text-slate-500">Loading...</div>;
-  return <Routes><Route path="/login" element={<Login />} />{setup && <Route path="/setup" element={<Setup />} />}<Route element={<Protected />}><Route path="/" element={<Dashboard />} /><Route path="/reports" element={<Reports />} /><Route path="/common-form" element={<CommonForm />} /><Route path="/fields" element={<Fields />} /><Route path="/dropdowns" element={<Dropdowns />} /><Route path="/settings" element={<Settings />} /><Route path="/asset-types/:id" element={<AssetType />} /><Route path="/asset-types/:assetTypeId/new" element={<AssetEditor />} /><Route path="/assets/:publicId" element={<AssetDetail />} /><Route path="/assets/:publicId/edit" element={<AssetEditor />} /></Route><Route path="*" element={<Navigate to={setup ? '/setup' : '/'} replace />} /></Routes>;
+  return <Routes><Route path="/login" element={<Login />} />{setup && <Route path="/setup" element={<Setup />} />}<Route element={<Protected />}><Route path="/" element={<Dashboard />} /><Route path="/reports" element={<RequireCap cap="reports.view_own"><Reports /></RequireCap>} /><Route path="/common-form" element={<RequireCap cap="common_form.manage_own"><CommonForm /></RequireCap>} /><Route path="/fields" element={<RequireCap cap="fields.manage_own"><Fields /></RequireCap>} /><Route path="/dropdowns" element={<RequireCap cap="dropdowns.manage_own"><Dropdowns /></RequireCap>} /><Route path="/users" element={<RequireCap cap="admin"><Users /></RequireCap>} /><Route path="/email-notifications" element={<RequireCap cap="email.rules.manage_own"><EmailNotifications /></RequireCap>} /><Route path="/email-history" element={<RequireCap cap="email.history.view_own"><EmailHistory /></RequireCap>} /><Route path="/settings" element={<Settings />} /><Route path="/asset-types/:id" element={<RequireCap cap="asset_types.view_own"><AssetType /></RequireCap>} /><Route path="/asset-types/:assetTypeId/new" element={<RequireCap cap="assets.create_own"><AssetEditor /></RequireCap>} /><Route path="/assets/:publicId" element={<RequireCap cap="assets.view_own"><AssetDetail /></RequireCap>} /><Route path="/assets/:publicId/edit" element={<RequireCap cap="assets.edit_own"><AssetEditor /></RequireCap>} /></Route><Route path="*" element={<Navigate to={setup ? '/setup' : '/'} replace />} /></Routes>;
 }
 export default function App() { return <PublicRouter />; }

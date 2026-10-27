@@ -4,6 +4,7 @@ import { api } from "../api/client";
 import { Button, Card, Alert } from "../components/ui";
 import { formatDateValue, formatIndiaDateTime } from "../utils";
 import { useToast } from "../context/ToastContext";
+import { useAuth } from "../context/AuthContext";
 export function AssetDetail() {
   const { publicId } = useParams();
   const nav = useNavigate();
@@ -11,6 +12,7 @@ export function AssetDetail() {
   const [fields, setFields] = useState([]);
   const [error, setError] = useState("");
   const { showToast } = useToast();
+  const { can } = useAuth();
   useEffect(() => {
     (async () => {
       try {
@@ -18,7 +20,7 @@ export function AssetDetail() {
         setAsset(a.data);
         const f = await api.assets.form(a.data.assetTypeId);
         const enriched = await Promise.all(
-          f.data.map(async (x) => {
+          f.data.fields.map(async (x) => {
             if (x.type !== "dropdown") return { ...x };
             const dropdownId = x.dropdownId ?? x.dropdown_id;
             if (!dropdownId) return { ...x };
@@ -63,12 +65,16 @@ export function AssetDetail() {
           </p>
         </div>
         <div className="flex gap-2">
-          <Link to={`/assets/${publicId}/edit`}>
-            <Button>Edit</Button>
-          </Link>
-          <Button variant="danger" onClick={remove}>
-            Delete
-          </Button>
+          {can("assets.edit_own") && (
+            <Link to={`/assets/${publicId}/edit`}>
+              <Button>Edit</Button>
+            </Link>
+          )}
+          {can("assets.delete_own") && (
+            <Button variant="danger" onClick={remove}>
+              Delete
+            </Button>
+          )}
         </div>
       </div>
       {error && (

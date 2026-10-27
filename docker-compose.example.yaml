@@ -24,3 +24,17 @@ services:
       TURNSTILE_SECRET_KEY: your_turnstile_secret_key
       SESSION_MAX_AGE_MS: 86400000
 
+      # Email notifications.
+      # SMTP_ENCRYPTION_KEY protects the SMTP password at rest (AES-256-GCM).
+      # It must be at least 32 characters and MUST stay stable across restarts and
+      # redeploys - changing it makes the stored SMTP password undecryptable.
+      # Generate one with:
+      #   node -e "console.log(require('crypto').randomBytes(36).toString('base64'))"
+      SMTP_ENCRYPTION_KEY: replace_with_a_long_random_secret_at_least_32_chars
+      # In-process delivery worker. A MySQL GET_LOCK ensures only one container sends
+      # at a time, so this is safe even if the service is scaled horizontally.
+      # Set to "false" to stop delivering emails (rows still queue as history).
+      EMAIL_WORKER_ENABLED: "true"
+      EMAIL_WORKER_INTERVAL_MS: 15000
+      EMAIL_MAX_ATTEMPTS: 5
+

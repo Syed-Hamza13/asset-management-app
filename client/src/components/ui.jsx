@@ -121,7 +121,7 @@ export function DateInput({ label, value, onChange, error, required, disabled })
   );
 }
 
-export function Select({ label, options, error, ...props }) {
+export function Select({ label, options, error, hideBlank, ...props }) {
   return (
     <label className="block">
       <span className="mb-1.5 block text-sm font-medium text-slate-700">
@@ -132,7 +132,7 @@ export function Select({ label, options, error, ...props }) {
         className="w-full rounded-xl border border-slate-200 bg-white px-3.5 py-2.5 outline-none focus:border-slate-400 focus:ring-4 focus:ring-slate-100"
         {...props}
       >
-        <option value="">Select...</option>
+        {!hideBlank && <option value="">Select...</option>}
         {options.map((o) => (
           <option key={o.value} value={o.value}>
             {o.label}

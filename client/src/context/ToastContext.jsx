@@ -20,7 +20,13 @@ export function ToastProvider({ children }) {
       {children}
       {toast && (
         <div className="fixed right-4 top-4 z-[60] max-w-sm" role="status">
-          <div className={`rounded-xl border px-4 py-3 text-sm shadow-lg ${toast.type === "error" ? "border-red-200 bg-red-50 text-red-700" : "border-emerald-200 bg-emerald-50 text-emerald-700"}`}>
+          <div className={`rounded-xl border px-4 py-3 text-sm shadow-lg ${
+            toast.type === "error"
+              ? "border-red-200 bg-red-50 text-red-700"
+              : toast.type === "queued"
+                ? "border-amber-200 bg-amber-50 text-amber-700"
+                : "border-emerald-200 bg-emerald-50 text-emerald-700"
+          }`}>
             {toast.message}
           </div>
         </div>

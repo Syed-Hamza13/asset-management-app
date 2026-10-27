@@ -10,7 +10,7 @@ import { env } from './config/env.js';
 import { pool } from './config/db.js';
 import { csrfProtection } from './middleware/csrf.js';
 import { errorHandler, notFound } from './middleware/errorHandler.js';
-import { requireAuth } from './middleware/auth.js';
+import { requireAuth, loadUser, requirePermission } from './middleware/auth.js';
 import { loginRateLimit } from './middleware/rateLimit.js';
 import { setupStatus, setupAdmin } from './modules/setup/controller.js';
 import { login, logout, me, csrf, updatePassword } from './modules/auth/controller.js';
@@ -117,11 +117,11 @@ app.get('/api/v1/setup/status', setupStatus);
 app.post('/api/v1/setup', setupAdmin);
 app.post('/api/v1/auth/login', loginRateLimit, login);
 app.post('/api/v1/auth/logout', requireAuth, logout);
-app.get('/api/v1/auth/me', requireAuth, me);
+app.get('/api/v1/auth/me', requireAuth, loadUser, me);
 app.get('/api/v1/auth/csrf', requireAuth, csrf);
 app.post('/api/v1/auth/change-password', requireAuth, updatePassword);
 app.get('/api/v1/branding', requireAuth, getBranding);
-app.put('/api/v1/branding', requireAuth, updateBranding);
+app.put('/api/v1/branding', requireAuth, loadUser, requirePermission('branding.manage'), updateBranding);
 
 app.use('/api/v1', apiRouter);
 

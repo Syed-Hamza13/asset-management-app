@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { api } from "../api/client";
 import { useToast } from "../context/ToastContext";
+import { useAuth } from "../context/AuthContext";
 import {
   Button,
   Card,
@@ -22,14 +23,19 @@ export function Dashboard() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const { showToast } = useToast();
+  const { can } = useAuth();
+  const canCreateAsset = can("assets.create_own");
+  const canCreateType = can("asset_types.create_own");
   const [typeSearch, setTypeSearch] = useState("");
   const [selectedType, setSelectedType] = useState(null);
   const [typePickerOpen, setTypePickerOpen] = useState(true);
   const [fields, setFields] = useState([]);
+  const [automations, setAutomations] = useState([]);
   const [values, setValues] = useState({});
   const [fieldErrors, setFieldErrors] = useState({});
   const [typeLoading, setTypeLoading] = useState(false);
   const [creatingType, setCreatingType] = useState(false);
+  const [emptyReason, setEmptyReason] = useState(null);
   async function load() {
     setLoading(true);
     try {
@@ -65,7 +71,8 @@ export function Dashboard() {
   const exactType = types.find(
     (type) => type.name.toLowerCase() === typeSearch.trim().toLowerCase(),
   );
-  const canCreateType = typeSearch.trim().length > 0 && !exactType;
+  const canCreateInlineType =
+    canCreateType && typeSearch.trim().length > 0 && !exactType;
 
   function openAddAsset() {
     setError("");
@@ -74,7 +81,9 @@ export function Dashboard() {
     setSelectedType(null);
     setTypePickerOpen(true);
     setFields([]);
+    setAutomations([]);
     setValues({});
+    setEmptyReason(null);
     setOpen(true);
   }
 
@@ -85,11 +94,12 @@ export function Dashboard() {
     setValues({});
     setFieldErrors({});
     setError("");
+    setEmptyReason(null);
     setTypeLoading(true);
     try {
       const form = await api.assets.form(type.id);
       const enriched = await Promise.all(
-        form.data.map(async (field) => {
+        form.data.fields.map(async (field) => {
           if (field.type !== "dropdown") return field;
           const dropdown = await api.dropdowns.get(field.dropdownId);
           return {
@@ -101,9 +111,15 @@ export function Dashboard() {
         }),
       );
       setFields(enriched);
+      setAutomations(form.data.automations || []);
+      if (!enriched.length) {
+        const commonForm = await api.commonForm.get();
+        setEmptyReason(commonForm.data.length ? "type" : "common-form");
+      }
     } catch (e) {
       setError(e.message);
       setFields([]);
+      setAutomations([]);
     } finally {
       setTypeLoading(false);
     }
@@ -137,7 +153,9 @@ export function Dashboard() {
     setFieldErrors({});
     try {
       const response = await api.assets.create(selectedType.id, values);
-      showToast("Asset added successfully.");
+      const queued = response.data.notificationsQueued || 0;
+      if (queued > 0) showToast(`Asset added. ${queued} notification${queued === 1 ? "" : "s"} queued.`, "queued");
+      else showToast("Asset added successfully.");
       setOpen(false);
       navigate(`/assets/${response.data.publicId}`);
       await load();
@@ -159,10 +177,12 @@ export function Dashboard() {
           </p>
         </div>
         <div className="flex gap-2">
-          <Button onClick={openAddAsset}>+ Add Asset</Button>
-          <Button variant="secondary" onClick={() => setTypeModalOpen(true)}>
-            + Add Asset Type
-          </Button>
+          {canCreateAsset && <Button onClick={openAddAsset}>+ Add Asset</Button>}
+          {canCreateType && (
+            <Button variant="secondary" onClick={() => setTypeModalOpen(true)}>
+              + Add Asset Type
+            </Button>
+          )}
         </div>
       </div>
       {error && !open && !typeModalOpen && (
@@ -179,9 +199,11 @@ export function Dashboard() {
           title="No asset types yet"
           description="Create your first asset type, then configure its fields."
           action={
-            <Button onClick={() => setTypeModalOpen(true)}>
-              Create first asset type
-            </Button>
+            canCreateType ? (
+              <Button onClick={() => setTypeModalOpen(true)}>
+                Create first asset type
+              </Button>
+            ) : undefined
           }
         />
       ) : (
@@ -224,9 +246,10 @@ export function Dashboard() {
                 setSelectedType(null);
                 setTypePickerOpen(true);
                 setFields([]);
+                setAutomations([]);
               }}
               onKeyDown={(e) => {
-                if (e.key === "Enter" && canCreateType) {
+                if (e.key === "Enter" && canCreateInlineType) {
                   e.preventDefault();
                   createTypeAndSelect();
                 }
@@ -249,7 +272,7 @@ export function Dashboard() {
                     {type.name}
                   </button>
                 ))}
-              {canCreateType && (
+              {canCreateInlineType && (
                 <button
                   type="button"
                   className="block w-full rounded-lg border-t border-slate-100 px-3 py-2 text-left text-sm font-semibold text-slate-700 hover:bg-slate-50"
@@ -262,7 +285,7 @@ export function Dashboard() {
               )}
               {!filteredTypes.filter((type) => type.id !== selectedType?.id)
                 .length &&
-                !canCreateType && (
+                !canCreateInlineType && (
                   <div className="px-3 py-2 text-sm text-slate-500">
                     No asset type found.
                   </div>
@@ -286,10 +309,33 @@ export function Dashboard() {
                   values={values}
                   setValues={setValues}
                   errors={fieldErrors}
+                  automations={automations}
                 />
               ) : (
                 <div className="rounded-xl border border-dashed border-slate-300 px-4 py-5 text-sm text-slate-500">
-                  No fields configured for this asset type yet.
+                  {emptyReason === "common-form" ? (
+                    <>
+                      The Common Form has no fields yet, so new asset types
+                      start empty.{" "}
+                      <Link
+                        to="/common-form"
+                        className="font-semibold text-slate-700 underline"
+                      >
+                        Configure the Common Form
+                      </Link>{" "}
+                      to add default fields.
+                    </>
+                  ) : (
+                    <>
+                      No fields configured for this asset type yet.{" "}
+                      <Link
+                        to={`/asset-types/${selectedType.id}`}
+                        className="font-semibold text-slate-700 underline"
+                      >
+                        Configure Form
+                      </Link>
+                    </>
+                  )}
                 </div>
               )}
               <div className="flex justify-end gap-2">

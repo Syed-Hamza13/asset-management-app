@@ -16,6 +16,7 @@ import { formatDateValue } from "../utils";
 import { indianDateToIso } from "../utils/date";
 import * as XLSX from "xlsx";
 import { useToast } from "../context/ToastContext";
+import { useAuth } from "../context/AuthContext";
 
 function FieldForm({ fields, onChange, onSave }) {
   const [local, setLocal] = useState(fields);
@@ -202,6 +203,9 @@ export function AssetType() {
   const [deleteConfirmed, setDeleteConfirmed] = useState(false);
   const [deleteLoading, setDeleteLoading] = useState(false);
   const { showToast } = useToast();
+  const { can } = useAuth();
+  const canEditForm = can("asset_types.edit_own") || can("fields.manage_own");
+  const canBulk = can("assets.bulk_own");
   async function load() {
     try {
       const [t, f, fl] = await Promise.all([
@@ -345,8 +349,11 @@ export function AssetType() {
         setError(`${bulkField.name} must be a valid date.`);
         return;
       }
-      await api.assets.bulkUpdate(id, selectedAssetIds, { [bulkFieldKey]: value });
-      showToast(`${selectedAssetIds.length} asset${selectedAssetIds.length === 1 ? "" : "s"} updated successfully.`);
+      const res = await api.assets.bulkUpdate(id, selectedAssetIds, { [bulkFieldKey]: value });
+      const queued = res.data.notificationsQueued || 0;
+      const base = `${selectedAssetIds.length} asset${selectedAssetIds.length === 1 ? "" : "s"} updated successfully.`;
+      if (queued > 0) showToast(`${base} ${queued} notification${queued === 1 ? "" : "s"} queued.`, "queued");
+      else showToast(base);
       setBulkAction("");
       setSelectedAssetIds([]);
       await load();
@@ -403,53 +410,67 @@ export function AssetType() {
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
-          <Link to={`/asset-types/${id}/new`}>
-            <Button>+ Add Asset</Button>
-          </Link>
+          {can("assets.create_own") && (
+            <Link to={`/asset-types/${id}/new`}>
+              <Button>+ Add Asset</Button>
+            </Link>
+          )}
 
-          <Button
-            variant="secondary"
-            onClick={() => setConfigureForm(true)}
-          >
-            Configure Form
-          </Button>
+          {canEditForm && (
+            <Button
+              variant="secondary"
+              onClick={() => setConfigureForm(true)}
+            >
+              Configure Form
+            </Button>
+          )}
 
-          <Button
-            variant="secondary"
-            onClick={exportAssets}
-            disabled={!filteredItems.length}
-          >
-            Export XLSX
-          </Button>
+          {can("reports.export_own") && (
+            <Button
+              variant="secondary"
+              onClick={exportAssets}
+              disabled={!filteredItems.length}
+            >
+              Export XLSX
+            </Button>
+          )}
 
-          <Button
-            variant="secondary"
-            onClick={() => setConfigureAutomations(true)}
-          >
-            Configure Automations
-          </Button>
+          {can("automations.manage_own") && (
+            <Button
+              variant="secondary"
+              onClick={() => setConfigureAutomations(true)}
+            >
+              Configure Automations
+            </Button>
+          )}
 
-          <Button
-            variant="secondary"
-            onClick={() => {
-              setColumnForm(
-                form.map((x) => ({
-                  ...x,
-                  showInList: x.showInList !== false,
-                })),
-              );
-              setCustomizeColumns(true);
-            }}
-          >
-            Customize Columns
-          </Button>
+          {canEditForm && (
+            <Button
+              variant="secondary"
+              onClick={() => {
+                setColumnForm(
+                  form.map((x) => ({
+                    ...x,
+                    showInList: x.showInList !== false,
+                  })),
+                );
+                setCustomizeColumns(true);
+              }}
+            >
+              Customize Columns
+            </Button>
+          )}
 
-          <Button variant="secondary" onClick={() => setEditName(true)}>
-            Rename
-          </Button>
-          <Button variant="danger" onClick={() => { setDeleteConfirmed(false); setDeleteOpen(true); }}>
-            Delete Asset Type
-          </Button>
+          {can("asset_types.edit_own") && (
+            <Button variant="secondary" onClick={() => setEditName(true)}>
+              Rename
+            </Button>
+          )}
+          {can("asset_types.delete_own") && (
+            <Button variant="danger" onClick={() => { setDeleteConfirmed(false); setDeleteOpen(true); }}>
+              Delete Asset Type
+            </Button>
+          )}
         </div>
       </div>
       {error && (
@@ -470,9 +491,11 @@ export function AssetType() {
               title={`No ${type.name.toLowerCase()} assets`}
               description="Add your first asset using the configured form."
               action={
-                <Link to={`/asset-types/${id}/new`}>
-                  <Button>Add Asset</Button>
-                </Link>
+                can("assets.create_own") ? (
+                  <Link to={`/asset-types/${id}/new`}>
+                    <Button>Add Asset</Button>
+                  </Link>
+                ) : undefined
               }
             />
           ) : (
@@ -492,7 +515,7 @@ export function AssetType() {
                   </button>
                 </div>
               )}
-              {selectedAssetIds.length > 0 && (
+              {canBulk && selectedAssetIds.length > 0 && (
                 <div className="flex flex-wrap items-center gap-2 border-b border-slate-100 px-4 py-3">
                   <span className="mr-1 text-sm font-semibold text-slate-700">{selectedAssetIds.length} selected</span>
                   <Select
@@ -516,7 +539,7 @@ export function AssetType() {
                   <thead className="bg-slate-50 text-xs uppercase text-slate-500">
                     <tr>
                       <th className="px-4 py-3">
-                        <input type="checkbox" aria-label="Select visible assets" checked={allVisibleSelected} onChange={(event) => setSelectedAssetIds(event.target.checked ? [...new Set([...selectedAssetIds, ...filteredItems.map((asset) => asset.publicId)])] : selectedAssetIds.filter((publicId) => !filteredItems.some((asset) => asset.publicId === publicId)))} />
+                        {canBulk && <input type="checkbox" aria-label="Select visible assets" checked={allVisibleSelected} onChange={(event) => setSelectedAssetIds(event.target.checked ? [...new Set([...selectedAssetIds, ...filteredItems.map((asset) => asset.publicId)])] : selectedAssetIds.filter((publicId) => !filteredItems.some((asset) => asset.publicId === publicId)))} />}
                       </th>
                       {visibleFields.map((f) => (
                         <th key={f.id} className="relative px-4 py-3">
@@ -568,7 +591,7 @@ export function AssetType() {
                   <tbody className="divide-y divide-slate-100">
                     {filteredItems.map((a) => (
                       <tr key={a.publicId} className="hover:bg-slate-50">
-                        <td className="px-4 py-3"><input type="checkbox" aria-label={`Select asset ${a.publicId}`} checked={selectedAssetIds.includes(a.publicId)} onChange={(event) => toggleAssetSelection(a.publicId, event.target.checked)} /></td>
+                        <td className="px-4 py-3">{canBulk && <input type="checkbox" aria-label={`Select asset ${a.publicId}`} checked={selectedAssetIds.includes(a.publicId)} onChange={(event) => toggleAssetSelection(a.publicId, event.target.checked)} />}</td>
                         {visibleFields.map((f) => (
                             <td
                               key={f.id}

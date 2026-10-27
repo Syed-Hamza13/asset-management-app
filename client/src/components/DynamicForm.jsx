@@ -1,6 +1,10 @@
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 import { DateInput, Input, Select } from "./ui";
 import { todayInputValue } from '../utils';
+import {
+  actionValue,
+  conditionMatches,
+} from '../../../shared/automationRules.js';
 
 export function DynamicForm({
   fields,
@@ -8,7 +12,14 @@ export function DynamicForm({
   setValues,
   errors = {},
   disabled = false,
+  automations = [],
+  previousValues = {},
 }) {
+  const automatedRef = useRef(new Set());
+  const manualRef = useRef(new Set());
+  const applyingRef = useRef(false);
+  const lastValuesRef = useRef(values);
+
   useEffect(() => {
     setValues((current) => {
       const next = { ...current };
@@ -27,6 +38,48 @@ export function DynamicForm({
       return changed ? next : current;
     });
   }, [fields, setValues]);
+
+  useEffect(() => {
+    if (applyingRef.current) {
+      applyingRef.current = false;
+      lastValuesRef.current = values;
+      return;
+    }
+    const previous = lastValuesRef.current;
+    lastValuesRef.current = values;
+    if (!automations.length) return;
+    const changedKeys = new Set(
+      Object.keys(values).filter((key) => values[key] !== previous[key]),
+    );
+    for (const key of changedKeys) {
+      if (automatedRef.current.has(key)) {
+        manualRef.current.add(key);
+        automatedRef.current.delete(key);
+      }
+    }
+    const next = { ...values };
+    for (const rule of automations) {
+      if (manualRef.current.has(rule.targetKey)) {
+        if (!changedKeys.has(rule.sourceKey)) continue;
+        manualRef.current.delete(rule.targetKey);
+      }
+      if (
+        !conditionMatches(
+          rule,
+          next[rule.sourceKey],
+          previousValues[rule.sourceKey],
+        )
+      )
+        continue;
+      next[rule.targetKey] = actionValue(rule);
+      automatedRef.current.add(rule.targetKey);
+    }
+    const changed = Object.keys(next).some((key) => next[key] !== values[key]);
+    if (changed) {
+      applyingRef.current = true;
+      setValues(next);
+    }
+  }, [values, automations, previousValues, setValues]);
 
   return (
     <div className="grid gap-4 md:grid-cols-2">

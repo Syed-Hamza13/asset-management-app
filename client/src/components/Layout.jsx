@@ -6,16 +6,20 @@ import { ToastProvider } from "../context/ToastContext";
 import { api } from "../api/client";
 
 const nav = [
-  ["/", "Assets"],
-  ["/reports", "Reports"],
-  ["/common-form", "Common Form"],
-  ["/fields", "Field Definitions"],
-  ["/dropdowns", "Dropdowns"],
-  ["/settings", "Settings"],
+  ["/", "Assets", null],
+  ["/reports", "Reports", "reports.view_own"],
+  ["/common-form", "Common Form", "common_form.manage_own"],
+  ["/fields", "Field Definitions", "fields.manage_own"],
+  ["/dropdowns", "Dropdowns", "dropdowns.manage_own"],
+  ["/email-notifications", "Email Notifications", "email.rules.manage_own"],
+  ["/email-history", "Email History", "email.history.view_own"],
+  ["/users", "Users", "admin"],
+  ["/settings", "Settings", null],
 ];
 export function Layout() {
-  const { user, logout } = useAuth();
+  const { user, logout, can, isAdmin } = useAuth();
   const location = useLocation();
+  const visibleNav = nav.filter(([, , cap]) => cap === null || (cap === "admin" ? isAdmin : can(cap)));
   const title = location.pathname.startsWith("/asset-types/")
     ? "Asset Type"
     : nav.find((n) => location.pathname === n[0])?.[1] || "Asset Manager";
@@ -38,7 +42,7 @@ export function Layout() {
           Asset Manager
         </div>
         <nav className="px-3 py-4">
-          {nav.map(([to, label]) => (
+          {visibleNav.map(([to, label]) => (
             <NavLink
               key={to}
               to={to}
@@ -70,7 +74,7 @@ export function Layout() {
             </button>
           </div>
           <nav className="flex gap-1 overflow-x-auto px-3 pb-3">
-            {nav.map(([to, label]) => (
+            {visibleNav.map(([to, label]) => (
               <NavLink
                 key={to}
                 to={to}

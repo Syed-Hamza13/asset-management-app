@@ -1,3 +1,4 @@
+import { ZodError } from 'zod';
 import { AppError } from '../utils/errors.js';
 
 export function notFound(req, res) {
@@ -5,6 +6,17 @@ export function notFound(req, res) {
 }
 
 export function errorHandler(err, req, res, _next) {
+  if (err instanceof ZodError) {
+    const fields = {};
+    for (const issue of err.issues) {
+      const key = issue.path.join('.') || '_';
+      if (!fields[key]) fields[key] = issue.message;
+    }
+    return res.status(400).json({
+      success: false,
+      error: { code: 'VALIDATION_ERROR', message: 'Invalid request payload.', fields },
+    });
+  }
   const status = err instanceof AppError ? err.status : 500;
   const payload = {
     success: false,

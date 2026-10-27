@@ -1,13 +1,17 @@
 import { pool } from '../../config/db.js';
 import { AppError } from '../../utils/errors.js';
 import { assertIntegerId, validateFieldValue } from '../../utils/validation.js';
-import { indiaToday } from '../../utils/dateTime.js';
+import { ownerScope } from '../../utils/scope.js';
+import { applyAutomationRules } from '../../../../shared/automationRules.js';
+import { getEffectiveCommonRules } from '../commonForms/automationService.js';
+import { getAssetType } from '../assetTypes/service.js';
 
 const CONDITIONS = new Set(['filled', 'empty', 'changed', 'equals']);
 const ACTIONS = new Set(['set_value', 'set_today']);
 
-export async function listAutomations(assetTypeId) {
+export async function listAutomations(actor, assetTypeId) {
   const id = assertIntegerId(assetTypeId, 'asset type id');
+  await getAssetType(actor, id);
   const [rows] = await pool.execute(`SELECT a.id, a.source_field_id, sf.name AS source_field_name, sf.\`key\` AS source_field_key,
       sf.type AS source_field_type, sf.dropdown_id AS source_dropdown_id, a.condition_type, a.condition_value, a.target_field_id,
       tf.name AS target_field_name, tf.\`key\` AS target_field_key, tf.type AS target_field_type, tf.dropdown_id AS target_dropdown_id,
@@ -26,8 +30,9 @@ async function getFormField(assetTypeId, fieldId) {
   return rows[0] || null;
 }
 
-export async function createAutomation(assetTypeId, input) {
+export async function createAutomation(actor, assetTypeId, input) {
   const id = assertIntegerId(assetTypeId, 'asset type id');
+  await getAssetType(actor, id);
   const sourceId = assertIntegerId(input.sourceFieldId, 'source field id');
   const targetId = assertIntegerId(input.targetFieldId, 'target field id');
   if (!CONDITIONS.has(input.conditionType)) throw new AppError(400, 'INVALID_AUTOMATION_CONDITION', 'Invalid automation condition.');
@@ -43,12 +48,16 @@ export async function createAutomation(assetTypeId, input) {
   const [r] = await pool.execute(`INSERT INTO asset_automations
     (asset_type_id, source_field_id, condition_type, condition_value, target_field_id, action_type, action_value)
     VALUES (?, ?, ?, ?, ?, ?, ?)`, [id, sourceId, input.conditionType, input.conditionValue ?? null, targetId, input.actionType, input.actionType === 'set_value' ? String(input.actionValue) : null]);
-  return (await listAutomations(id)).find(x => Number(x.id) === Number(r.insertId));
+  return (await listAutomations(actor, id)).find(x => Number(x.id) === Number(r.insertId));
 }
 
-export async function deleteAutomation(id) {
+export async function deleteAutomation(actor, id) {
   const n = assertIntegerId(id, 'automation id');
-  const [r] = await pool.execute('DELETE FROM asset_automations WHERE id = ?', [n]);
+  const scope = ownerScope(actor, 'at.owner_user_id');
+  const [r] = await pool.execute(
+    `DELETE a FROM asset_automations a JOIN asset_types at ON at.id = a.asset_type_id WHERE a.id = ?${scope.sql}`,
+    [n, ...scope.params],
+  );
   if (!r.affectedRows) throw new AppError(404, 'AUTOMATION_NOT_FOUND', 'Automation not found.');
 }
 
@@ -64,38 +73,46 @@ async function validateAutomationValue(field, value) {
   validateFieldValue(field, parsed, options);
 }
 
-function conditionMatches(rule, sourceValue, previousValue) {
-  const filled = sourceValue !== undefined && sourceValue !== null && sourceValue !== '';
-  if (rule.condition_type === 'filled') return filled;
-  if (rule.condition_type === 'empty') return !filled;
-  if (rule.condition_type === 'changed') return String(sourceValue ?? '') !== String(previousValue ?? '');
-  if (rule.condition_type === 'equals') return String(sourceValue ?? '') === String(rule.condition_value ?? '');
-  return false;
+export async function applyAutomations(actor, assetTypeId, values, previousValues = {}) {
+  const rules = await getEffectiveAssetRules(actor, assetTypeId);
+  if (!rules.length) return values;
+  return applyAutomationRules(rules, values, previousValues);
 }
 
-export async function applyAutomations(assetTypeId, values, previousValues = {}) {
+export async function getEffectiveAssetRules(actor, assetTypeId) {
   const id = assertIntegerId(assetTypeId, 'asset type id');
-  const [rules] = await pool.execute(`SELECT id, source_field_id, condition_type, condition_value, target_field_id, action_type, action_value
-    FROM asset_automations WHERE asset_type_id = ? AND is_active = 1 ORDER BY id ASC`, [id]);
-  if (!rules.length) return values;
+  const [rules] = await pool.execute(`SELECT a.id, a.source_field_id, a.condition_type, a.condition_value, a.target_field_id, a.action_type, a.action_value
+    FROM asset_automations a WHERE a.asset_type_id = ? AND a.is_active = 1 ORDER BY a.id ASC`, [id]);
+  if (!rules.length) return [];
   const [fields] = await pool.execute(`SELECT f.id, f.name, f.\`key\` AS field_key, f.type, f.dropdown_id
     FROM asset_type_fields atf JOIN field_definitions f ON f.id = atf.field_definition_id
     WHERE atf.asset_type_id = ?`, [id]);
   const byId = new Map(fields.map(f => [Number(f.id), f]));
-  const result = { ...values };
+  const mapped = [];
   for (const rule of rules) {
     const source = byId.get(Number(rule.source_field_id));
     const target = byId.get(Number(rule.target_field_id));
     if (!source || !target) continue;
-    if (!conditionMatches(rule, result[source.field_key], previousValues[source.field_key])) continue;
-    if (rule.action_type === 'set_today') {
-      result[target.field_key] = indiaToday();
-    } else if (rule.action_type === 'set_value') {
-      let value = rule.action_value;
-      if (target.type === 'number') value = Number(value);
-      if (target.type === 'boolean') value = value === 'true';
-      result[target.field_key] = value;
-    }
+    mapped.push({
+      id: rule.id,
+      scope: 'asset_type',
+      sourceKey: source.field_key,
+      sourceType: source.type,
+      conditionType: rule.condition_type,
+      conditionValue: rule.condition_value,
+      targetKey: target.field_key,
+      targetType: target.type,
+      actionType: rule.action_type,
+      actionValue: rule.action_value,
+    });
   }
-  return result;
+  return mapped;
+}
+
+export async function getEffectiveAutomations(actor, assetTypeId) {
+  const [commonRules, assetRules] = await Promise.all([
+    getEffectiveCommonRules(actor),
+    getEffectiveAssetRules(actor, assetTypeId),
+  ]);
+  return [...commonRules, ...assetRules];
 }

@@ -7,14 +7,16 @@ import { useToast } from '../context/ToastContext';
 
 async function loadFields(typeId, includeQuantity = true) {
   const form = await api.assets.form(typeId);
+  const allFields = form.data.fields;
   const fields = includeQuantity
-    ? form.data
-    : form.data.filter((field) => field.type !== 'quantity');
-  return Promise.all(fields.map(async f => {
+    ? allFields
+    : allFields.filter((field) => field.type !== 'quantity');
+  const enriched = await Promise.all(fields.map(async f => {
     if (f.type !== 'dropdown') return f;
     const d = await api.dropdowns.get(f.dropdownId);
     return { ...f, options: d.data.options.filter(o => o.is_active).map(o => ({ value: o.value, label: o.label })) };
   }));
+  return { fields: enriched, automations: form.data.automations || [] };
 }
 
 function toFormValues(values, fields) {
@@ -31,6 +33,8 @@ export function AssetEditor() {
   const nav = useNavigate();
   const [type, setType] = useState(null);
   const [fields, setFields] = useState([]);
+  const [automations, setAutomations] = useState([]);
+  const [previousValues, setPreviousValues] = useState({});
   const [values, setValues] = useState({});
   const [error, setError] = useState('');
   const [fieldErrors, setFieldErrors] = useState({});
@@ -51,9 +55,14 @@ export function AssetEditor() {
         }
         setType(typeData.data);
         const typeId = assetTypeId || typeData.data.id;
-        const fs = await loadFields(typeId, !editing);
+        const { fields: fs, automations: rules } = await loadFields(typeId, !editing);
         setFields(fs);
-        if (assetData) setValues(toFormValues(assetData.data.values, fs));
+        setAutomations(rules);
+        if (assetData) {
+          const loaded = toFormValues(assetData.data.values, fs);
+          setValues(loaded);
+          setPreviousValues(loaded);
+        }
       } catch (e) {
         setError(e.message);
       } finally {
@@ -69,9 +78,10 @@ export function AssetEditor() {
     setFieldErrors({});
     try {
       const apiValues = toApiValues(values, fields);
-      if (editing) await api.assets.update(publicId, apiValues);
-      else await api.assets.create(assetTypeId, apiValues);
-      showToast(editing ? 'Asset updated successfully.' : 'Asset added successfully.');
+      const res = editing ? await api.assets.update(publicId, apiValues) : await api.assets.create(assetTypeId, apiValues);
+      const queued = res.data.notificationsQueued || 0;
+      if (queued > 0) showToast(`${editing ? "Asset updated" : "Asset added"}. ${queued} notification${queued === 1 ? "" : "s"} queued.`, "queued");
+      else showToast(editing ? 'Asset updated successfully.' : 'Asset added successfully.');
       nav(editing ? `/assets/${publicId}` : `/asset-types/${assetTypeId}`);
     } catch (e) {
       setError(e.message);
@@ -86,6 +96,6 @@ export function AssetEditor() {
   return <div className="mx-auto max-w-3xl">
     <div className="mb-6"><Link to={editing ? `/assets/${publicId}` : `/asset-types/${assetTypeId}`} className="text-sm text-slate-500">← Back</Link><h2 className="mt-2 text-2xl font-bold">{editing ? 'Edit' : 'Add'} {type.name}</h2><p className="mt-1 text-sm text-slate-500">Fill the configured fields below.</p></div>
     {error && <div className="mb-4"><Alert>{error}</Alert></div>}
-    <Card className="p-6"><form onSubmit={submit}><DynamicForm fields={fields} values={values} setValues={setValues} errors={fieldErrors}/><div className="mt-6 flex justify-end gap-2"><Button variant="secondary" type="button" onClick={() => nav(-1)}>Cancel</Button><Button loading={saving}>{editing ? 'Save Changes' : `Save ${type.name}`}</Button></div></form></Card>
+    <Card className="p-6"><form onSubmit={submit}>{!loading && !fields.length && <div className="rounded-xl border border-dashed border-slate-300 px-4 py-5 text-sm text-slate-500">No fields configured for this asset type yet. <Link to={`/asset-types/${assetTypeId}`} className="font-semibold text-slate-700 underline">Configure Form</Link></div>}<DynamicForm fields={fields} values={values} setValues={setValues} errors={fieldErrors} automations={automations} previousValues={previousValues}/><div className="mt-6 flex justify-end gap-2"><Button variant="secondary" type="button" onClick={() => nav(-1)}>Cancel</Button><Button loading={saving}>{editing ? 'Save Changes' : `Save ${type.name}`}</Button></div></form></Card>
   </div>;
 }

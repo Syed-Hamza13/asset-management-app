@@ -10,8 +10,8 @@ const formSchema = z.object({
   })).max(100),
 });
 
-export const get = asyncHandler(async (_req, res) =>
-  res.json({ success: true, data: await getCommonForm() }));
+export const get = asyncHandler(async (req, res) =>
+  res.json({ success: true, data: await getCommonForm(req.user) }));
 
 export const save = asyncHandler(async (req, res) =>
-  res.json({ success: true, data: await saveCommonForm(formSchema.parse(req.body).fields) }));
+  res.json({ success: true, data: await saveCommonForm(req.user, formSchema.parse(req.body).fields) }));
