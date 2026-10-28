@@ -11,7 +11,11 @@ export function automationToday() {
 }
 
 export function conditionMatches(rule, sourceValue, previousValue) {
-  const filled = sourceValue !== undefined && sourceValue !== null && sourceValue !== '';
+  // Whitespace-only values count as empty (a lone space is not "filled").
+  const filled =
+    sourceValue !== undefined &&
+    sourceValue !== null &&
+    String(sourceValue).trim() !== '';
   if (rule.conditionType === 'filled') return filled;
   if (rule.conditionType === 'empty') return !filled;
   if (rule.conditionType === 'changed')

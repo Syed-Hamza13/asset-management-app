@@ -38,6 +38,10 @@ test('conditionMatches handles filled/empty', () => {
   assert.equal(conditionMatches(rule({ conditionType: 'empty' }), '', undefined), true);
   assert.equal(conditionMatches(rule({ conditionType: 'empty' }), null, undefined), true);
   assert.equal(conditionMatches(rule({ conditionType: 'empty' }), 'x', undefined), false);
+  // Whitespace-only values are treated as empty.
+  assert.equal(conditionMatches(rule({ conditionType: 'filled' }), '   ', undefined), false);
+  assert.equal(conditionMatches(rule({ conditionType: 'filled' }), '\t \n', undefined), false);
+  assert.equal(conditionMatches(rule({ conditionType: 'empty' }), '   ', undefined), true);
 });
 
 test('conditionMatches handles changed against previous values', () => {

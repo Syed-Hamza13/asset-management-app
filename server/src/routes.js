@@ -10,6 +10,7 @@ import * as commonForm from './modules/commonForms/controller.js';
 import * as commonAutomation from './modules/commonForms/automationController.js';
 import * as user from './modules/users/controller.js';
 import * as smtp from './modules/smtp/controller.js';
+import * as turnstile from './modules/turnstile/controller.js';
 import * as email from './modules/email/controller.js';
 
 const router = Router();
@@ -48,6 +49,7 @@ router.get('/fields', requirePermission('fields.manage_own', 'asset_types.view_o
 router.post('/fields', requirePermission('fields.manage_own'), field.create);
 router.get('/fields/:id', requirePermission('fields.manage_own', 'asset_types.view_own', 'common_form.manage_own'), field.get);
 router.patch('/fields/:id', requirePermission('fields.manage_own'), field.update);
+router.post('/fields/:id/type-preview', requirePermission('fields.manage_own'), field.preview);
 router.delete('/fields/:id', requirePermission('fields.manage_own'), field.remove);
 
 // Dropdowns (reads also allowed for users filling asset forms with dropdown fields)
@@ -75,6 +77,8 @@ router.get('/settings/smtp', requireAdmin, smtp.get);
 router.put('/settings/smtp', requireAdmin, smtp.update);
 router.post('/settings/smtp/test-connection', requireAdmin, emailTestRateLimit, smtp.test);
 router.post('/settings/smtp/test-email', requireAdmin, emailTestRateLimit, smtp.testEmail);
+router.get('/settings/turnstile', requireAdmin, turnstile.get);
+router.put('/settings/turnstile', requireAdmin, turnstile.update);
 
 // Email templates / recipients / rules / history (per-user)
 router.get('/email/templates', requirePermission('email.templates.manage_own', 'email.rules.manage_own'), email.listTemplates);

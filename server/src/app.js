@@ -14,6 +14,7 @@ import { requireAuth, loadUser, requirePermission } from './middleware/auth.js';
 import { loginRateLimit } from './middleware/rateLimit.js';
 import { setupStatus, setupAdmin } from './modules/setup/controller.js';
 import { login, logout, me, csrf, updatePassword } from './modules/auth/controller.js';
+import { config as turnstileConfig } from './modules/turnstile/controller.js';
 import apiRouter from './routes.js';
 import { get as getBranding, update as updateBranding } from './modules/branding/controller.js';
 
@@ -114,6 +115,7 @@ app.use(csrfProtection);
 
 app.get('/health', (_req, res) => res.json({ success: true, data: { status: 'ok' } }));
 app.get('/api/v1/setup/status', setupStatus);
+app.get('/api/v1/auth/turnstile-config', turnstileConfig);
 app.post('/api/v1/setup', setupAdmin);
 app.post('/api/v1/auth/login', loginRateLimit, login);
 app.post('/api/v1/auth/logout', requireAuth, logout);

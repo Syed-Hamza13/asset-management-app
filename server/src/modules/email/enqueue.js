@@ -37,8 +37,8 @@ function conditionMet(rule, prev, next) {
   switch (rule.trigger_condition) {
     case 'equals': return str(next) === str(rule.trigger_condition_value);
     case 'not_equals': return str(next) !== str(rule.trigger_condition_value);
-    case 'filled': return str(next) !== '';
-    case 'empty': return str(next) === '';
+    case 'filled': return str(next).trim() !== '';
+    case 'empty': return str(next).trim() === '';
     case 'any_change':
     default: return true;
   }

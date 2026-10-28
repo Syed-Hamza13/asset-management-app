@@ -30,8 +30,8 @@ function TemplatesTab() {
   const { showToast } = useToast();
   const [rows, setRows] = useState([]);
   const [types, setTypes] = useState([]);
-  const [fieldType, setFieldType] = useState("");
-  const [typeFields, setTypeFields] = useState([]);
+  const [fieldMeta, setFieldMeta] = useState([]);
+  const [fieldsLoading, setFieldsLoading] = useState(false);
   const [insertPrevious, setInsertPrevious] = useState(false);
   const [error, setError] = useState("");
   const [editing, setEditing] = useState(null);
@@ -42,14 +42,32 @@ function TemplatesTab() {
     } catch (e) { setError(e.message); }
   }
   useEffect(() => { load(); }, []);
+  // Build the union of every field across the user's asset types, tagging how
+  // many types each appears in so common columns (all types) can be highlighted.
   useEffect(() => {
+    if (!types.length) { setFieldMeta([]); return; }
     let active = true;
-    if (!fieldType) { setTypeFields([]); return; }
-    api.assetTypes.form(fieldType)
-      .then((res) => { if (active) setTypeFields(res.data); })
-      .catch(() => { if (active) setTypeFields([]); });
+    setFieldsLoading(true);
+    Promise.all(types.map((t) => api.assetTypes.form(t.id).then((r) => r.data || []).catch(() => [])))
+      .then((forms) => {
+        if (!active) return;
+        const map = new Map();
+        for (const fs of forms) {
+          const seen = new Set();
+          for (const f of fs) {
+            const fk = f.field_key || f.key;
+            if (!fk || seen.has(fk)) continue;
+            seen.add(fk);
+            const entry = map.get(fk) || { key: fk, name: f.name, type: f.type, usedIn: 0 };
+            entry.usedIn += 1;
+            map.set(fk, entry);
+          }
+        }
+        setFieldMeta([...map.values()]);
+        setFieldsLoading(false);
+      });
     return () => { active = false; };
-  }, [fieldType]);
+  }, [types]);
   function insert(token) {
     setEditing((cur) => ({ ...cur, bodyTemplate: `${cur.bodyTemplate || ""}${token}` }));
   }
@@ -66,6 +84,19 @@ function TemplatesTab() {
     try { await api.email.templates.remove(row.id); showToast("Template deleted."); await load(); }
     catch (e) { setError(e.message); }
   }
+  const commonFields = fieldMeta.filter((f) => f.usedIn === types.length);
+  const otherFields = fieldMeta.filter((f) => f.usedIn < types.length);
+  const renderChips = (list) => (
+    <div className="mt-2 flex flex-wrap gap-1.5">
+      {list.map((f) => (
+        <button key={f.key} type="button" title={`{{field.${f.key}}}${f.usedIn < types.length ? ` · in ${f.usedIn} of ${types.length} asset types` : ' · in all asset types'}`}
+          className="rounded-lg bg-indigo-50 px-2 py-1 font-mono text-xs text-indigo-700 hover:bg-indigo-100"
+          onClick={() => insert(`{{field.${f.key}${insertPrevious ? ".previous" : ""}}}`)}>
+          {f.name}
+        </button>
+      ))}
+    </div>
+  );
   return (
     <div>
       <div className="mb-3 flex justify-end"><Button onClick={() => setEditing({ name: "", subjectTemplate: "", bodyTemplate: "", isActive: true })}>+ New Template</Button></div>
@@ -91,7 +122,7 @@ function TemplatesTab() {
           <form onSubmit={save} className="space-y-4">
             <Input label="Name" value={editing.name} onChange={(e) => setEditing({ ...editing, name: e.target.value })} required />
             <Input label="Subject" value={editing.subjectTemplate} onChange={(e) => setEditing({ ...editing, subjectTemplate: e.target.value })} required />
-            <Input label="Body" type="textarea" value={editing.bodyTemplate} onChange={(e) => setEditing({ ...editing, bodyTemplate: e.target.value })} hint="Plain text. Use placeholders below." />
+            <Input label="Body" type="textarea" value={editing.bodyTemplate} onChange={(e) => setEditing({ ...editing, bodyTemplate: e.target.value })} hint="Plain text. Click any placeholder to insert it into the body." />
             <div>
               <div className="mb-1.5 text-xs font-semibold uppercase tracking-wide text-slate-400">General placeholders</div>
               <div className="flex flex-wrap gap-1.5">
@@ -102,29 +133,33 @@ function TemplatesTab() {
               </div>
             </div>
             <div>
-              <div className="mb-1.5 text-xs font-semibold uppercase tracking-wide text-slate-400">Asset field placeholders</div>
-              <p className="mb-2 text-xs text-slate-500">Pick an asset type to insert its fields. Each rule sends the fields of the asset that triggered it, so use fields shared by the types in your rule.</p>
-              <div className="flex flex-wrap items-center gap-2">
-                <select value={fieldType} onChange={(e) => setFieldType(e.target.value)} className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-sm">
-                  <option value="">Select an asset type…</option>
-                  {types.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
-                </select>
+              <div className="mb-1 flex items-center justify-between">
+                <div className="text-xs font-semibold uppercase tracking-wide text-slate-400">Asset field placeholders</div>
                 <label className="flex items-center gap-1.5 text-xs text-slate-600">
                   <input type="checkbox" checked={insertPrevious} onChange={(e) => setInsertPrevious(e.target.checked)} />
-                  use previous value (.previous)
+                  previous value (.previous)
                 </label>
               </div>
-              {fieldType && (
-                typeFields.length ? (
-                  <div className="mt-2 flex flex-wrap gap-1.5">
-                    {typeFields.map((f) => (
-                      <button key={f.id} type="button" title={f.name} className="rounded-lg bg-indigo-50 px-2 py-1 font-mono text-xs text-indigo-700 hover:bg-indigo-100"
-                        onClick={() => insert(`{{field.${f.key}${insertPrevious ? ".previous" : ""}}}`)}>
-                        {f.name}
-                      </button>
-                    ))}
-                  </div>
-                ) : <div className="mt-2 text-xs text-slate-400">No fields configured for this asset type yet.</div>
+              <p className="mb-1 text-xs text-slate-500">Every field from your asset forms. A field that isn&rsquo;t on the triggered asset renders blank, so use the common ones for shared rules.</p>
+              {fieldsLoading ? (
+                <div className="py-3 text-xs text-slate-400">Loading fields…</div>
+              ) : fieldMeta.length === 0 ? (
+                <div className="py-2 text-xs text-slate-400">No fields available yet.</div>
+              ) : (
+                <div className="max-h-56 overflow-auto rounded-lg border border-slate-200 p-2">
+                  {commonFields.length > 0 && (
+                    <>
+                      <div className="text-[11px] font-semibold text-slate-500">Common (all {types.length} asset types)</div>
+                      {renderChips(commonFields)}
+                    </>
+                  )}
+                  {otherFields.length > 0 && (
+                    <>
+                      <div className={`text-[11px] font-semibold text-slate-500 ${commonFields.length ? "mt-3" : ""}`}>Other fields (specific asset types)</div>
+                      {renderChips(otherFields)}
+                    </>
+                  )}
+                </div>
               )}
             </div>
             <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={editing.isActive} onChange={(e) => setEditing({ ...editing, isActive: e.target.checked })} /> Active</label>

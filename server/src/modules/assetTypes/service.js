@@ -78,12 +78,10 @@ export async function updateAssetType(actor, id, name) {
 export async function deleteAssetType(actor, id) {
   const idN = assertIntegerId(id, "asset type id");
   const scope = ownerScope(actor);
-  const [[count]] = await pool
-    .execute(
-      `SELECT COUNT(*) AS count FROM assets WHERE asset_type_id = ?${scope.sql}`,
-      [idN, ...scope.params],
-    )
-    .then(([r]) => [r[0]]);
+  const [[count]] = await pool.execute(
+    `SELECT COUNT(*) AS count FROM assets WHERE asset_type_id = ?${scope.sql}`,
+    [idN, ...scope.params],
+  );
   if (Number(count.count) > 0)
     throw new AppError(
       409,

@@ -73,6 +73,12 @@ export const api = {
     }
   },
   me: () => request("/auth/me"),
+  turnstileConfig: () => request("/auth/turnstile-config"),
+  turnstile: {
+    settings: () => request("/settings/turnstile"),
+    update: (enabled) =>
+      request("/settings/turnstile", { method: "PUT", body: JSON.stringify({ enabled }) }),
+  },
   changePassword: (body) =>
     request("/auth/change-password", {
       method: "POST",
@@ -115,6 +121,8 @@ export const api = {
       request("/fields", { method: "POST", body: JSON.stringify(body) }),
     update: (id, body) =>
       request(`/fields/${id}`, { method: "PATCH", body: JSON.stringify(body) }),
+    previewTypeChange: (id, type) =>
+      request(`/fields/${id}/type-preview`, { method: "POST", body: JSON.stringify({ type }) }),
     remove: (id) => request(`/fields/${id}`, { method: "DELETE" }),
   },
   dropdowns: {
