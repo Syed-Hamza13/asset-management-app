@@ -17,7 +17,7 @@ function ReportFilter({ column, values, selectedValues, onToggle, onClear }) {
   const [search, setSearch] = useState("");
   const matches = values.filter((value) => value.toLowerCase().includes(search.toLowerCase()));
   return (
-    <div className="absolute left-0 top-full z-[60] mt-2 w-64 rounded-xl border border-slate-200 bg-white p-3 text-left normal-case shadow-xl">
+    <div className="absolute left-0 top-full z-30 mt-2 w-64 rounded-xl border border-slate-200 bg-white p-3 text-left normal-case shadow-xl">
       <input
         className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm font-normal outline-none focus:border-slate-400 focus:ring-4 focus:ring-slate-100"
         placeholder={`Search ${column.label}`}

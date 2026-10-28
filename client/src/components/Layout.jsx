@@ -3,6 +3,8 @@ import { useEffect, useState } from "react";
 import { useAuth } from "../context/AuthContext";
 import { Button } from "./ui";
 import { ToastProvider } from "../context/ToastContext";
+import { NotificationsProvider } from "../context/NotificationsContext";
+import { NotificationBell } from "./NotificationBell";
 import { api } from "../api/client";
 
 const nav = [
@@ -35,11 +37,15 @@ export function Layout() {
   }, [branding.favicon]);
   return (
     <ToastProvider>
+    <NotificationsProvider>
       <div className="min-h-screen bg-slate-50">
       <aside className="fixed inset-y-0 left-0 hidden w-64 border-r border-slate-200 bg-white lg:block">
-        <div className="flex h-16 items-center gap-2 px-6 text-lg font-bold">
-          {branding.appIcon && <img src={branding.appIcon} alt="" className="h-8 w-8 rounded-lg object-cover" />}
-          Asset Manager
+        <div className="flex h-16 items-center justify-between gap-2 px-6 text-lg font-bold">
+          <span className="flex min-w-0 items-center gap-2 truncate">
+            {branding.appIcon && <img src={branding.appIcon} alt="" className="h-8 w-8 rounded-lg object-cover" />}
+            Asset Manager
+          </span>
+          <NotificationBell align="left" />
         </div>
         <nav className="px-3 py-4">
           {visibleNav.map(([to, label]) => (
@@ -69,9 +75,12 @@ export function Layout() {
         <header className="sticky top-0 z-20 border-b border-slate-200 bg-white/95 backdrop-blur lg:hidden">
           <div className="flex items-center justify-between gap-3 px-4 py-3">
             <div className="flex min-w-0 items-center gap-2 truncate text-base font-bold">{branding.appIcon && <img src={branding.appIcon} alt="" className="h-7 w-7 rounded-md object-cover" />}{title}</div>
-            <button onClick={logout} className="shrink-0 text-sm font-semibold text-slate-600">
-              Logout
-            </button>
+            <div className="flex shrink-0 items-center gap-3">
+              <NotificationBell align="right" />
+              <button onClick={logout} className="text-sm font-semibold text-slate-600">
+                Logout
+              </button>
+            </div>
           </div>
           <nav className="flex gap-1 overflow-x-auto px-3 pb-3">
             {visibleNav.map(([to, label]) => (
@@ -109,6 +118,7 @@ export function Layout() {
         </main>
       </div>
       </div>
+    </NotificationsProvider>
     </ToastProvider>
   );
 }

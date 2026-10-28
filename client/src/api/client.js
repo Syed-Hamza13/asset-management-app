@@ -11,6 +11,7 @@ async function request(path, options = {}) {
     !["GET", "HEAD", "OPTIONS"].includes(method) &&
     !token &&
     !path.includes("/auth/login") &&
+    !path.includes("/quick-entry/submit") &&
     !path.includes("/setup")
   ) {
     token = await ensureCsrf();
@@ -172,6 +173,18 @@ export const api = {
     resetPassword: (id, password) => request(`/users/${id}/reset-password`, { method: "POST", body: JSON.stringify({ password }) }),
     setPermissions: (id, permissions) => request(`/users/${id}/permissions`, { method: "PUT", body: JSON.stringify({ permissions }) }),
     remove: (id) => request(`/users/${id}`, { method: "DELETE" }),
+  },
+  quickEntry: {
+    publicConfig: () => request("/quick-entry/public-config"),
+    submit: (body) => request("/quick-entry/submit", { method: "POST", body: JSON.stringify(body) }),
+    get: () => request("/quick-entry"),
+    save: (body) => request("/quick-entry", { method: "PUT", body: JSON.stringify(body) }),
+  },
+  notifications: {
+    list: (unreadOnly = false) => request(`/notifications${unreadOnly ? "?unread=true" : ""}`),
+    unreadCount: () => request("/notifications/unread-count"),
+    markRead: (id) => request(`/notifications/${id}/read`, { method: "POST" }),
+    markAllRead: () => request("/notifications/read-all", { method: "POST" }),
   },
   smtp: {
     get: () => request("/settings/smtp"),

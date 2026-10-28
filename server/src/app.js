@@ -11,10 +11,11 @@ import { pool } from './config/db.js';
 import { csrfProtection } from './middleware/csrf.js';
 import { errorHandler, notFound } from './middleware/errorHandler.js';
 import { requireAuth, loadUser, requirePermission } from './middleware/auth.js';
-import { loginRateLimit } from './middleware/rateLimit.js';
+import { loginRateLimit, quickEntryRateLimit } from './middleware/rateLimit.js';
 import { setupStatus, setupAdmin } from './modules/setup/controller.js';
 import { login, logout, me, csrf, updatePassword } from './modules/auth/controller.js';
 import { config as turnstileConfig } from './modules/turnstile/controller.js';
+import { publicConfig as quickEntryPublicConfig, submit as quickEntrySubmit } from './modules/quickEntry/controller.js';
 import apiRouter from './routes.js';
 import { get as getBranding, update as updateBranding } from './modules/branding/controller.js';
 
@@ -118,6 +119,9 @@ app.get('/api/v1/setup/status', setupStatus);
 app.get('/api/v1/auth/turnstile-config', turnstileConfig);
 app.post('/api/v1/setup', setupAdmin);
 app.post('/api/v1/auth/login', loginRateLimit, login);
+// Public quick-entry: unauthenticated, CSRF skipped (no session), rate-limited + Turnstile-verified.
+app.get('/api/v1/quick-entry/public-config', quickEntryPublicConfig);
+app.post('/api/v1/quick-entry/submit', quickEntryRateLimit, quickEntrySubmit);
 app.post('/api/v1/auth/logout', requireAuth, logout);
 app.get('/api/v1/auth/me', requireAuth, loadUser, me);
 app.get('/api/v1/auth/csrf', requireAuth, csrf);

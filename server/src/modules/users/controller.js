@@ -6,12 +6,14 @@ import { createUser, deleteUser, listUsers, resetUserPassword, setUserPermission
 const createSchema = z.object({
   email: z.string().trim().max(255),
   password: z.string().min(10).max(200),
+  displayName: z.string().trim().max(100).nullish(),
   role: z.enum(['admin', 'user']).default('user'),
   permissions: z.array(z.string()).optional(),
 });
 const updateSchema = z.object({
   isActive: z.boolean().optional(),
   role: z.enum(['admin', 'user']).optional(),
+  displayName: z.string().trim().max(100).nullish(),
 });
 const passwordSchema = z.object({ password: z.string().min(10).max(200) });
 const permissionsSchema = z.object({ permissions: z.array(z.string()).optional() });

@@ -12,6 +12,8 @@ import * as user from './modules/users/controller.js';
 import * as smtp from './modules/smtp/controller.js';
 import * as turnstile from './modules/turnstile/controller.js';
 import * as email from './modules/email/controller.js';
+import * as quickEntry from './modules/quickEntry/controller.js';
+import * as notification from './modules/notifications/controller.js';
 
 const router = Router();
 router.use(loadUser);
@@ -104,5 +106,15 @@ router.post('/email/rules/:id/test', requirePermission('email.rules.manage_own')
 
 router.get('/email/history/all', requireAdmin, email.historyAll);
 router.get('/email/history', requirePermission('email.history.view_own'), email.history);
+
+// Quick Entry — admin-only configuration (public submit + config live in app.js).
+router.get('/quick-entry', requireAdmin, quickEntry.get);
+router.put('/quick-entry', requireAdmin, quickEntry.save);
+
+// In-app notifications — any authenticated user sees only their own rows.
+router.get('/notifications', notification.list);
+router.get('/notifications/unread-count', notification.counts);
+router.post('/notifications/read-all', notification.readAll);
+router.post('/notifications/:id/read', notification.read);
 
 export default router;

@@ -49,7 +49,9 @@ export function Users() {
   const [createOpen, setCreateOpen] = useState(false);
   const [permsFor, setPermsFor] = useState(null);
   const [resetFor, setResetFor] = useState(null);
-  const [form, setForm] = useState({ email: "", password: "", role: "user", permissions: [] });
+  const [nameFor, setNameFor] = useState(null);
+  const [displayNameDraft, setDisplayNameDraft] = useState("");
+  const [form, setForm] = useState({ email: "", password: "", displayName: "", role: "user", permissions: [] });
   const [permsDraft, setPermsDraft] = useState([]);
   const [newPassword, setNewPassword] = useState("");
   const [saving, setSaving] = useState(false);
@@ -70,7 +72,7 @@ export function Users() {
 
   function openCreate() {
     setError("");
-    setForm({ email: "", password: "", role: "user", permissions: caps.defaults });
+    setForm({ email: "", password: "", displayName: "", role: "user", permissions: caps.defaults });
     setCreateOpen(true);
   }
 
@@ -141,6 +143,23 @@ export function Users() {
     }
   }
 
+  async function saveDisplayName(e) {
+    e.preventDefault();
+    setSaving(true);
+    setError("");
+    try {
+      await api.users.update(nameFor.id, { displayName: displayNameDraft.trim() });
+      showToast("Display name updated.");
+      setNameFor(null);
+      setDisplayNameDraft("");
+      await load();
+    } catch (e2) {
+      setError(e2.message);
+    } finally {
+      setSaving(false);
+    }
+  }
+
   async function removeUser(u) {
     if (!confirm(`Delete ${u.email}? All of their asset types, assets, fields, and dropdowns will be permanently deleted.`)) return;
     setError("");
@@ -171,17 +190,19 @@ export function Users() {
             <div key={u.id} className="flex flex-wrap items-center justify-between gap-3 p-4">
               <div className="min-w-0">
                 <div className="flex flex-wrap items-center gap-2">
-                  <span className="truncate font-semibold text-slate-900">{u.email}</span>
+                  <span className="truncate font-semibold text-slate-900">{u.displayName || u.email}</span>
                   {isSelf && <span className="rounded-full bg-slate-100 px-2 py-0.5 text-xs text-slate-500">you</span>}
                   <span className={`rounded-full px-2 py-0.5 text-xs font-semibold ${u.role === "admin" ? "bg-slate-900 text-white" : "bg-slate-100 text-slate-600"}`}>{u.role}</span>
                   {!u.isActive && <span className="rounded-full bg-red-50 px-2 py-0.5 text-xs font-semibold text-red-600">deactivated</span>}
                   {u.mustChangePassword && <span className="rounded-full bg-amber-50 px-2 py-0.5 text-xs font-semibold text-amber-600">must change password</span>}
                 </div>
                 <div className="mt-1 text-xs text-slate-400">
+                  {u.displayName && <span className="mr-2">{u.email}</span>}
                   {u.role === "admin" ? "Full access to everything" : `${u.permissions.length} capability${u.permissions.length === 1 ? "" : "ies"} granted`}
                 </div>
               </div>
               <div className="flex flex-wrap gap-2">
+                <Button variant="secondary" onClick={() => { setNameFor(u); setDisplayNameDraft(u.displayName || ""); setError(""); }}>Display name</Button>
                 {u.role !== "admin" && (
                   <Button variant="secondary" onClick={() => { setPermsFor(u); setPermsDraft(u.permissions); setError(""); }}>Permissions</Button>
                 )}
@@ -208,6 +229,7 @@ export function Users() {
         <form onSubmit={createUser} className="space-y-4">
           {error && <Alert>{error}</Alert>}
           <Input label="Email" type="email" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} required autoFocus />
+          <Input label="Display Name" hint="Shown to people in the Quick Entry notification picker. Optional." value={form.displayName} onChange={(e) => setForm({ ...form, displayName: e.target.value })} maxLength={100} />
           <Input label="Temporary Password" type="text" hint="At least 10 characters. The user must change it at first login." value={form.password} onChange={(e) => setForm({ ...form, password: e.target.value })} required minLength={10} />
           <Select
             label="Role"
@@ -243,6 +265,17 @@ export function Users() {
           <div className="flex justify-end gap-2">
             <Button variant="secondary" type="button" onClick={() => setResetFor(null)}>Cancel</Button>
             <Button loading={saving}>Reset Password</Button>
+          </div>
+        </form>
+      </Modal>
+
+      <Modal open={Boolean(nameFor)} title={`Display Name — ${nameFor?.email || ""}`} onClose={() => setNameFor(null)}>
+        <form onSubmit={saveDisplayName} className="space-y-4">
+          {error && <Alert>{error}</Alert>}
+          <Input label="Display Name" hint="Leave empty to fall back to the email address. Max 100 characters." value={displayNameDraft} onChange={(e) => setDisplayNameDraft(e.target.value)} maxLength={100} autoFocus />
+          <div className="flex justify-end gap-2">
+            <Button variant="secondary" type="button" onClick={() => setNameFor(null)}>Cancel</Button>
+            <Button loading={saving}>Save Name</Button>
           </div>
         </form>
       </Modal>

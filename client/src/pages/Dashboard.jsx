@@ -12,6 +12,7 @@ import {
   Alert,
 } from "../components/ui";
 import { DynamicForm } from "../components/DynamicForm";
+import { NotificationBanner } from "../components/NotificationBanner";
 
 export function Dashboard() {
   const navigate = useNavigate();
@@ -169,6 +170,7 @@ export function Dashboard() {
 
   return (
     <div>
+      <NotificationBanner />
       <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
         <div>
           <h2 className="text-xl font-bold">Assets</h2>

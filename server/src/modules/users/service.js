@@ -6,7 +6,7 @@ import { ALL_CAPABILITIES, DEFAULT_PERMISSIONS } from './capabilities.js';
 
 export async function listUsers() {
   const [users] = await pool.execute(
-    'SELECT id, email, role, is_active, must_change_password, created_at FROM users ORDER BY email ASC',
+    'SELECT id, email, display_name, role, is_active, must_change_password, created_at FROM users ORDER BY email ASC',
   );
   const [perms] = await pool.execute('SELECT user_id, capability FROM user_permissions');
   const byUser = new Map();
@@ -17,6 +17,7 @@ export async function listUsers() {
   return users.map((user) => ({
     id: user.id,
     email: user.email,
+    displayName: user.display_name || null,
     role: user.role,
     isActive: Boolean(user.is_active),
     mustChangePassword: Boolean(user.must_change_password),
@@ -33,7 +34,14 @@ function normalizePermissions(input) {
   return [...new Set(input)];
 }
 
-export async function createUser({ email, password, role = 'user', permissions }) {
+function normalizeDisplayName(input) {
+  if (input === undefined || input === null) return null;
+  if (typeof input !== 'string') throw new AppError(400, 'INVALID_DISPLAY_NAME', 'Display name must be a string.');
+  const cleaned = input.replace(/[\u0000-\u001F\u007F]/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 100);
+  return cleaned || null;
+}
+
+export async function createUser({ email, password, role = 'user', permissions, displayName }) {
   const normalizedEmail = String(email || '').trim().toLowerCase();
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalizedEmail)) throw new AppError(400, 'INVALID_EMAIL', 'Email is invalid.');
   if (typeof password !== 'string' || password.length < 10 || password.length > 200) throw new AppError(400, 'INVALID_PASSWORD', 'Password must be at least 10 characters.');
@@ -44,8 +52,8 @@ export async function createUser({ email, password, role = 'user', permissions }
     let newId;
     await withTransaction(async (conn) => {
       const [result] = await conn.execute(
-        'INSERT INTO users (email, password_hash, role, is_active, must_change_password) VALUES (?, ?, ?, 1, 1)',
-        [normalizedEmail, passwordHash, role],
+        'INSERT INTO users (email, display_name, password_hash, role, is_active, must_change_password) VALUES (?, ?, ?, ?, 1, 1)',
+        [normalizedEmail, normalizeDisplayName(displayName), passwordHash, role],
       );
       newId = result.insertId;
       for (const capability of caps) {
@@ -66,7 +74,7 @@ async function getUserOr404(id) {
   return rows[0];
 }
 
-export async function updateUser(actor, id, { isActive, role }) {
+export async function updateUser(actor, id, { isActive, role, displayName }) {
   const target = await getUserOr404(id);
   if (Number(target.id) === Number(actor.id)) {
     if (isActive === false) throw new AppError(400, 'CANNOT_DEACTIVATE_SELF', 'You cannot deactivate your own account.');
@@ -81,6 +89,7 @@ export async function updateUser(actor, id, { isActive, role }) {
   const params = [];
   if (isActive !== undefined) { sets.push('is_active = ?'); params.push(Boolean(isActive)); }
   if (role !== undefined) { sets.push('role = ?'); params.push(role); }
+  if (displayName !== undefined) { sets.push('display_name = ?'); params.push(normalizeDisplayName(displayName)); }
   if (!sets.length) return (await listUsers()).find((user) => user.id === Number(target.id));
   await pool.execute(`UPDATE users SET ${sets.join(', ')} WHERE id = ?`, [...params, target.id]);
   return (await listUsers()).find((user) => user.id === Number(target.id));
