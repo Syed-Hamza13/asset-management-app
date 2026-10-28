@@ -14,11 +14,25 @@ export async function listDropdowns(actor) {
 
 export async function getDropdown(actor, id) {
   const idN = assertIntegerId(id, 'dropdown id');
-  const scope = ownerScope(actor);
-  const [rows] = await pool.execute(`SELECT id, name, slug, is_active, owner_user_id FROM dropdowns WHERE id = ?${scope.sql}`, [idN, ...scope.params]);
-  if (!rows.length) throw new AppError(404, 'DROPDOWN_NOT_FOUND', 'Dropdown not found.');
+  const [[row]] = await pool.execute('SELECT id, name, slug, is_active, owner_user_id FROM dropdowns WHERE id = ?', [idN]);
+  if (!row) throw new AppError(404, 'DROPDOWN_NOT_FOUND', 'Dropdown not found.');
+  // A dropdown is readable by its owner and by admins. It is additionally
+  // readable by any user who can access an asset type whose form references it,
+  // so shared types keep working for participants (their forms render options).
+  if (!actor.isAdmin && Number(row.owner_user_id) !== Number(actor.id)) {
+    const [[used]] = await pool.execute(
+      `SELECT COUNT(*) AS count
+       FROM asset_type_fields atf
+       JOIN field_definitions f ON f.id = atf.field_definition_id
+       JOIN asset_types at ON at.id = atf.asset_type_id
+       WHERE f.dropdown_id = ? AND (at.owner_user_id = ?
+         OR EXISTS (SELECT 1 FROM asset_type_shares s WHERE s.asset_type_id = at.id AND s.user_id = ?))`,
+      [idN, actor.id, actor.id],
+    );
+    if (Number(used.count) === 0) throw new AppError(404, 'DROPDOWN_NOT_FOUND', 'Dropdown not found.');
+  }
   const [options] = await pool.execute('SELECT id, label, value, display_order, is_active FROM dropdown_options WHERE dropdown_id = ? ORDER BY display_order, id', [idN]);
-  return { ...rows[0], options };
+  return { ...row, options };
 }
 
 export async function createDropdown(actor, name) {

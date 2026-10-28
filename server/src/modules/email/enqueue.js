@@ -57,35 +57,52 @@ async function insertOutbox(conn, actor, rule, eventType, asset, payload) {
   );
 }
 
-function buildPayload(actor, asset, fields, previous) {
+function buildPayload(actor, asset, fields, previous, creator = actor) {
   return {
     assetTypeName: asset.assetTypeName,
     publicId: asset.publicId,
     createdAt: asset.createdAt,
     updatedAt: asset.updatedAt,
-    user: { email: actor.email, name: actor.email },
+    user: { email: creator.email, name: creator.email },
     fields,
     previous,
   };
 }
 
 // Returns the number of outbox rows enqueued. Must run inside the asset write transaction.
-export async function enqueueForCreate(conn, actor, asset, values) {
-  const rules = await loadRules(conn, actor, asset.assetTypeId, 'asset_created');
-  for (const rule of rules) {
-    await insertOutbox(conn, actor, rule, 'asset_created', asset, buildPayload(actor, asset, values, {}));
+// `actor` is the type owner (drives which email rules fire and who owns the outbox
+// rows); `creator` is the user who actually performed the write and is shown in the
+// email body via the {{user.*}} placeholders.
+export async function enqueueForCreate(conn, actor, asset, values, creator = actor) {
+  const createdRules = await loadRules(conn, actor, asset.assetTypeId, 'asset_created');
+  let queued = createdRules.length;
+  for (const rule of createdRules) {
+    await insertOutbox(conn, actor, rule, 'asset_created', asset, buildPayload(actor, asset, values, {}, creator));
   }
-  return rules.length;
+  // A `field_changed` rule whose condition already holds on the newly added asset
+  // also fires at creation (there is no previous value, so "changed" means the
+  // field is set to a matching value). This lets an asset that is ADDED with, for
+  // example, Status = "issued" send the same notification as editing it to that
+  // value. Update behaviour is untouched; rules that do not match stay silent.
+  const changedRules = await loadRules(conn, actor, asset.assetTypeId, 'field_changed');
+  for (const rule of changedRules) {
+    const key = rule.trigger_field_key;
+    if (!key) continue;
+    if (!conditionMet(rule, undefined, values?.[key])) continue;
+    await insertOutbox(conn, actor, rule, 'field_changed', asset, buildPayload(actor, asset, values, {}, creator));
+    queued += 1;
+  }
+  return queued;
 }
 
-export async function enqueueForUpdate(conn, actor, asset, previousValues, nextValues) {
+export async function enqueueForUpdate(conn, actor, asset, previousValues, nextValues, creator = actor) {
   const rules = await loadRules(conn, actor, asset.assetTypeId, 'field_changed');
   let queued = 0;
   for (const rule of rules) {
     const key = rule.trigger_field_key;
     if (!key) continue;
     if (!conditionMet(rule, previousValues?.[key], nextValues?.[key])) continue;
-    await insertOutbox(conn, actor, rule, 'field_changed', asset, buildPayload(actor, asset, nextValues, previousValues || {}));
+    await insertOutbox(conn, actor, rule, 'field_changed', asset, buildPayload(actor, asset, nextValues, previousValues || {}, creator));
     queued += 1;
   }
   return queued;

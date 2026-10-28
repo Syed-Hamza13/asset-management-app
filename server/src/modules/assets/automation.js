@@ -4,7 +4,7 @@ import { assertIntegerId, validateFieldValue } from '../../utils/validation.js';
 import { ownerScope } from '../../utils/scope.js';
 import { applyAutomationRules } from '../../../../shared/automationRules.js';
 import { getEffectiveCommonRules } from '../commonForms/automationService.js';
-import { getAssetType } from '../assetTypes/service.js';
+import { assertTypeOwnership, getAssetType } from '../assetTypes/service.js';
 
 const CONDITIONS = new Set(['filled', 'empty', 'changed', 'equals']);
 const ACTIONS = new Set(['set_value', 'set_today', 'clear']);
@@ -32,7 +32,7 @@ async function getFormField(assetTypeId, fieldId) {
 
 export async function createAutomation(actor, assetTypeId, input) {
   const id = assertIntegerId(assetTypeId, 'asset type id');
-  await getAssetType(actor, id);
+  await assertTypeOwnership(actor, id);
   const sourceId = assertIntegerId(input.sourceFieldId, 'source field id');
   const targetId = assertIntegerId(input.targetFieldId, 'target field id');
   if (!CONDITIONS.has(input.conditionType)) throw new AppError(400, 'INVALID_AUTOMATION_CONDITION', 'Invalid automation condition.');

@@ -203,9 +203,14 @@ export function AssetType() {
   const [deleteConfirmed, setDeleteConfirmed] = useState(false);
   const [deleteLoading, setDeleteLoading] = useState(false);
   const { showToast } = useToast();
-  const { can } = useAuth();
+  const { can, isAdmin, user } = useAuth();
   const canEditForm = can("asset_types.edit_own") || can("fields.manage_own");
   const canBulk = can("assets.bulk_own");
+  const [shareOpen, setShareOpen] = useState(false);
+  const [shareUsers, setShareUsers] = useState([]);
+  const [shareSelected, setShareSelected] = useState([]);
+  const [shareLoading, setShareLoading] = useState(false);
+  const [shareSaving, setShareSaving] = useState(false);
   async function load() {
     try {
       const [t, f, fl] = await Promise.all([
@@ -299,6 +304,47 @@ export function AssetType() {
       setError(e.message);
     } finally {
       setDeleteLoading(false);
+    }
+  }
+  async function openShareModal() {
+    setError("");
+    setShareOpen(true);
+    setShareLoading(true);
+    try {
+      const [usersRes, sharesRes] = await Promise.all([
+        api.users.list(),
+        api.assetTypes.getShares(id),
+      ]);
+      setShareUsers(
+        usersRes.data.filter(
+          (u) => u.role !== "admin" && u.isActive && Number(u.id) !== Number(user?.id),
+        ),
+      );
+      setShareSelected(sharesRes.data.map((s) => Number(s.user_id)));
+    } catch (e) {
+      setError(e.message);
+    } finally {
+      setShareLoading(false);
+    }
+  }
+  function toggleShareUser(userId) {
+    setShareSelected((current) =>
+      current.includes(userId)
+        ? current.filter((x) => x !== userId)
+        : [...new Set([...current, userId])],
+    );
+  }
+  async function saveShares() {
+    setShareSaving(true);
+    try {
+      await api.assetTypes.setShares(id, shareSelected);
+      setShareOpen(false);
+      showToast("Sharing updated successfully.");
+      await load();
+    } catch (e) {
+      setError(e.message);
+    } finally {
+      setShareSaving(false);
     }
   }
   const visibleFields = form.filter((f) => f.showInList !== false);
@@ -461,6 +507,11 @@ export function AssetType() {
             </Button>
           )}
 
+          {isAdmin && (
+            <Button variant="secondary" onClick={openShareModal}>
+              Share
+            </Button>
+          )}
           {can("asset_types.edit_own") && (
             <Button variant="secondary" onClick={() => setEditName(true)}>
               Rename
@@ -844,6 +895,53 @@ export function AssetType() {
 
             <Button onClick={() => saveColumns(columnForm)}>
               Save Columns
+            </Button>
+          </div>
+        </div>
+      </Modal>
+      <Modal
+        open={shareOpen}
+        title="Share this asset type"
+        onClose={() => setShareOpen(false)}
+        className="max-w-lg"
+      >
+        <div className="space-y-4">
+          <p className="text-sm text-slate-500">
+            Choose which users can access <strong>{type.name}</strong>. Shared
+            users see the type in their list with its full form, fields and
+            automations, and can add or edit entries. Only you and admins can
+            change its structure.
+          </p>
+          {shareLoading ? (
+            <div className="py-6 text-center text-sm text-slate-500">Loading users…</div>
+          ) : shareUsers.length === 0 ? (
+            <EmptyState
+              title="No other users"
+              description="Create non-admin users in Settings to share this asset type with them."
+            />
+          ) : (
+            <Card className="max-h-72 divide-y divide-slate-100 overflow-y-auto">
+              {shareUsers.map((u) => (
+                <label
+                  key={u.id}
+                  className="flex cursor-pointer items-center gap-3 px-4 py-3 text-sm hover:bg-slate-50"
+                >
+                  <input
+                    type="checkbox"
+                    checked={shareSelected.includes(Number(u.id))}
+                    onChange={() => toggleShareUser(Number(u.id))}
+                  />
+                  <span className="truncate">{u.email}</span>
+                </label>
+              ))}
+            </Card>
+          )}
+          <div className="flex justify-end gap-2">
+            <Button variant="secondary" onClick={() => setShareOpen(false)}>
+              Cancel
+            </Button>
+            <Button loading={shareSaving} disabled={shareLoading} onClick={saveShares}>
+              Save sharing
             </Button>
           </div>
         </div>

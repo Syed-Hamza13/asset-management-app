@@ -23,7 +23,7 @@ export function Dashboard() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const { showToast } = useToast();
-  const { can } = useAuth();
+  const { can, isAdmin } = useAuth();
   const canCreateAsset = can("assets.create_own");
   const canCreateType = can("asset_types.create_own");
   const [typeSearch, setTypeSearch] = useState("");
@@ -213,7 +213,14 @@ export function Dashboard() {
               <Link to={`/asset-types/${t.id}`} className="block">
                 <div className="flex items-start justify-between">
                   <div>
-                    <h3 className="font-semibold">{t.name}</h3>
+                    <h3 className="font-semibold">
+                      {t.name}{" "}
+                      {!isAdmin && t.is_owner === false && (
+                        <span className="ml-1 rounded-full bg-sky-100 px-2 py-0.5 align-middle text-xs font-semibold text-sky-700">
+                          Shared
+                        </span>
+                      )}
+                    </h3>
                     <p className="mt-1 text-sm text-slate-500">
                       {t.asset_count} asset
                       {Number(t.asset_count) === 1 ? "" : "s"}

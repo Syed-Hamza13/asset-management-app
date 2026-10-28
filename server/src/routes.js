@@ -43,6 +43,9 @@ router.post('/asset-types/:assetTypeId/automations', requirePermission('automati
 router.delete('/automations/:id', requirePermission('automations.manage_own'), automation.remove);
 router.get('/asset-types/:id/form', requirePermission('asset_types.view_own'), type.form);
 router.put('/asset-types/:id/form', requirePermission('asset_types.edit_own', 'fields.manage_own'), type.save);
+// Sharing an asset type with other users is a super-admin capability.
+router.get('/asset-types/:id/shares', requireAdmin, type.shares);
+router.put('/asset-types/:id/shares', requireAdmin, type.setSharesController);
 
 // Fields
 router.get('/fields', requirePermission('fields.manage_own', 'asset_types.view_own', 'common_form.manage_own'), field.list);

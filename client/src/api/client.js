@@ -105,6 +105,12 @@ export const api = {
         method: "PUT",
         body: JSON.stringify(body),
       }),
+    getShares: (id) => request(`/asset-types/${id}/shares`),
+    setShares: (id, userIds) =>
+      request(`/asset-types/${id}/shares`, {
+        method: "PUT",
+        body: JSON.stringify({ userIds }),
+      }),
   },
   commonForm: {
     get: () => request('/common-form'),

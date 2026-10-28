@@ -2,12 +2,37 @@ import { pool, withTransaction } from "../../config/db.js";
 import { v4 as uuidv4 } from "uuid";
 import { AppError } from "../../utils/errors.js";
 import { assertIntegerId, validateFieldValue } from "../../utils/validation.js";
-import { ownerScope } from "../../utils/scope.js";
+import { accessibleTypesSql, assetAccessSql } from "../../utils/scope.js";
 import { applyAutomations, getEffectiveAutomations } from "./automation.js";
 import { indiaToday } from "../../utils/dateTime.js";
 import { attachCommonFields } from "../commonForms/service.js";
 import { applyCommonAutomations } from "../commonForms/automationService.js";
 import { enqueueForCreate, enqueueForUpdate } from "../email/enqueue.js";
+
+// Resolve the actor whose common form, automations and email rules should drive a
+// write on `assetTypeId`. Normally this is the acting user; when someone adds to a
+// type owned by another user (shared with them by an admin) the type's own
+// structure, common fields and rules belong to the owner, so we substitute a
+// lightweight owner actor. Admins keep acting as themselves (already global scope).
+async function resolveActorForType(actor, assetTypeId) {
+  if (actor.isAdmin) return actor;
+  const [rows] = await pool.execute(
+    `SELECT at.owner_user_id, u.email AS owner_email
+     FROM asset_types at JOIN users u ON u.id = at.owner_user_id
+     WHERE at.id = ? LIMIT 1`,
+    [assetTypeId],
+  );
+  if (!rows.length) return actor;
+  if (Number(rows[0].owner_user_id) === Number(actor.id)) return actor;
+  return {
+    id: rows[0].owner_user_id,
+    email: rows[0].owner_email,
+    role: "user",
+    isAdmin: false,
+    permissions: [],
+  };
+}
+
 
 export async function getAssetForm(actor, assetTypeId) {
   const id = assertIntegerId(assetTypeId, "asset type id");
@@ -37,8 +62,21 @@ ORDER BY atf.display_order, f.id`,
   showInList: Boolean(r.show_in_list),
   order: r.display_order
 }));
-  const automations = await getEffectiveAutomations(actor, id);
-  return { fields, automations };
+  // A sharee must see the same automations the server will actually apply on create,
+  // which are the type OWNER's (common form + asset rules), not the acting user's.
+  // Substituting the owner actor here keeps the client preview aligned with createAsset.
+  const ownerActor = await resolveActorForType(actor, id);
+  const automations = await getEffectiveAutomations(ownerActor, id);
+  // Defensive: never hand the client a rule whose source/target key is not a field on
+  // this type, otherwise DynamicForm injects an unknown key into values and the server
+  // rejects the write with "Unknown field".
+  const keys = new Set(fields.map((f) => f.key));
+  return {
+    fields,
+    automations: automations.filter(
+      (r) => keys.has(r.sourceKey) && keys.has(r.targetKey),
+    ),
+  };
 }
 
 export async function validateValues(actor, assetTypeId, values, existingValues = {}) {
@@ -109,7 +147,7 @@ export async function validateValues(actor, assetTypeId, values, existingValues 
 
 export async function listAssets(actor, assetTypeId, page = 1, pageSize = 20) {
   const id = assertIntegerId(assetTypeId, "asset type id");
-  const scope = ownerScope(actor, "a.owner_user_id");
+  const scope = assetAccessSql(actor, "a");
   const limit = Math.min(Math.max(Number(pageSize) || 20, 1), 100);
   const currentPage = Math.max(Number(page) || 1, 1);
   const offset = (currentPage - 1) * limit;
@@ -139,7 +177,7 @@ export async function listAssets(actor, assetTypeId, page = 1, pageSize = 20) {
 
 export async function createAsset(actor, assetTypeId, values) {
   const id = assertIntegerId(assetTypeId, "asset type id");
-  const typeScope = ownerScope(actor, "at.owner_user_id");
+  const typeScope = accessibleTypesSql(actor, "at");
   const [typeRows] = await pool.execute(
     `SELECT at.id, at.name FROM asset_types at WHERE at.id = ?${typeScope.sql}`,
     [id, ...typeScope.params],
@@ -147,8 +185,12 @@ export async function createAsset(actor, assetTypeId, values) {
   if (!typeRows.length)
     throw new AppError(404, "ASSET_TYPE_NOT_FOUND", "Asset type not found.");
   const assetTypeName = typeRows[0].name;
+  // The type's common fields, automations and email rules belong to its owner;
+  // when a sharee adds to the type we run those steps as the owner so their
+  // private common form is never injected into the shared structure.
+  const ownerActor = await resolveActorForType(actor, id);
   await withTransaction(async (conn) => {
-    await attachCommonFields(actor, id, conn);
+    await attachCommonFields(ownerActor, id, conn);
   });
   const form = await getAssetForm(actor, id);
   const fields = form.fields;
@@ -168,7 +210,7 @@ export async function createAsset(actor, assetTypeId, values) {
       prepared[field.key] = indiaToday();
     }
   }
-  const automated = await applyAutomations(actor, id, await applyCommonAutomations(actor, prepared));
+  const automated = await applyAutomations(ownerActor, id, await applyCommonAutomations(ownerActor, prepared));
   const validated = await validateValues(actor, id, automated);
   if (quantityField) delete validated[quantityField.key];
   const publicIds = [];
@@ -184,9 +226,10 @@ export async function createAsset(actor, assetTypeId, values) {
       publicIds.push(publicId);
       notificationsQueued += await enqueueForCreate(
         conn,
-        actor,
+        ownerActor,
         { publicId, assetTypeId: id, assetTypeName, createdAt: nowIso, updatedAt: nowIso },
         validated,
+        actor,
       );
     }
   });
@@ -195,7 +238,7 @@ export async function createAsset(actor, assetTypeId, values) {
 }
 
 export async function getAsset(actor, publicId) {
-  const scope = ownerScope(actor, "a.owner_user_id");
+  const scope = assetAccessSql(actor, "a");
   const [rows] = await pool.execute(
     `SELECT a.public_id, a.asset_type_id, a.values_json, a.created_at, a.updated_at, at.name AS asset_type_name FROM assets a JOIN asset_types at ON at.id=a.asset_type_id WHERE a.public_id = ?${scope.sql}`,
     [publicId, ...scope.params],
@@ -226,10 +269,11 @@ export async function updateAsset(actor, publicId, values) {
   );
   const quantityField = form.find((field) => field.type === "quantity");
   if (quantityField) incoming[quantityField.key] = 1;
+  const ownerActor = await resolveActorForType(actor, current.assetTypeId);
   const automated = await applyAutomations(
-    actor,
+    ownerActor,
     current.assetTypeId,
-    await applyCommonAutomations(actor, incoming, current.values),
+    await applyCommonAutomations(ownerActor, incoming, current.values),
     current.values,
   );
   const merged = await validateValues(
@@ -243,7 +287,7 @@ export async function updateAsset(actor, publicId, values) {
   );
   if (quantityField) delete merged[quantityField.key];
   const storedValues = { ...legacyValues, ...merged };
-  const scope = ownerScope(actor);
+  const scope = assetAccessSql(actor);
   let notificationsQueued = 0;
   const nowIso = new Date().toISOString();
   await withTransaction(async (conn) => {
@@ -254,10 +298,11 @@ export async function updateAsset(actor, publicId, values) {
     if (!result.affectedRows) throw new AppError(404, "ASSET_NOT_FOUND", "Asset not found.");
     notificationsQueued = await enqueueForUpdate(
       conn,
-      actor,
+      ownerActor,
       { publicId, assetTypeId: current.assetTypeId, assetTypeName: current.assetTypeName, createdAt: current.createdAt, updatedAt: nowIso },
       current.values || {},
       storedValues,
+      actor,
     );
   });
   const updated = await getAsset(actor, publicId);
@@ -265,7 +310,7 @@ export async function updateAsset(actor, publicId, values) {
 }
 
 export async function deleteAsset(actor, publicId) {
-  const scope = ownerScope(actor);
+  const scope = assetAccessSql(actor);
   const [r] = await pool.execute(
     `DELETE FROM assets WHERE public_id = ?${scope.sql}`,
     [publicId, ...scope.params],
@@ -277,7 +322,7 @@ export async function deleteAsset(actor, publicId) {
 export async function bulkUpdateAssets(actor, assetTypeId, publicIds, values) {
   const id = assertIntegerId(assetTypeId, "asset type id");
   if (!Array.isArray(publicIds) || publicIds.length === 0) throw new AppError(400, "ASSETS_REQUIRED", "Select at least one asset.");
-  const scope = ownerScope(actor);
+  const scope = assetAccessSql(actor);
   const [rows] = await pool.execute(
     `SELECT public_id FROM assets WHERE asset_type_id = ?${scope.sql} AND public_id IN (${publicIds.map(() => "?").join(",")})`,
     [id, ...scope.params, ...publicIds],
@@ -294,7 +339,7 @@ export async function bulkUpdateAssets(actor, assetTypeId, publicIds, values) {
 export async function bulkDeleteAssets(actor, assetTypeId, publicIds) {
   const id = assertIntegerId(assetTypeId, "asset type id");
   if (!Array.isArray(publicIds) || publicIds.length === 0) throw new AppError(400, "ASSETS_REQUIRED", "Select at least one asset.");
-  const scope = ownerScope(actor);
+  const scope = assetAccessSql(actor);
   return withTransaction(async (conn) => {
     const [result] = await conn.execute(
       `DELETE FROM assets WHERE asset_type_id = ?${scope.sql} AND public_id IN (${publicIds.map(() => "?").join(",")})`,
