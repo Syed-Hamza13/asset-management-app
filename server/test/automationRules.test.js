@@ -23,7 +23,7 @@ const rule = (overrides = {}) => ({
 
 test('exposes the supported conditions and actions', () => {
   assert.deepEqual(AUTOMATION_CONDITIONS, ['filled', 'empty', 'changed', 'equals']);
-  assert.deepEqual(AUTOMATION_ACTIONS, ['set_value', 'set_today']);
+  assert.deepEqual(AUTOMATION_ACTIONS, ['set_value', 'set_today', 'clear']);
 });
 
 test('automationToday returns IST YYYY-MM-DD', () => {
@@ -63,6 +63,7 @@ test('actionValue coerces by target type and supports set_today', () => {
   assert.equal(actionValue(rule({ targetType: 'boolean', actionValue: 'true' })), true);
   assert.equal(actionValue(rule({ targetType: 'boolean', actionValue: 'false' })), false);
   assert.equal(actionValue(rule({ actionType: 'set_today' })), automationToday());
+  assert.equal(actionValue(rule({ actionType: 'clear', actionValue: 'Ignored' })), '');
 });
 
 test('applyAutomationRules does a single ordered pass without mutating input', () => {

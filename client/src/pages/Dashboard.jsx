@@ -310,6 +310,7 @@ export function Dashboard() {
                   setValues={setValues}
                   errors={fieldErrors}
                   automations={automations}
+                  isNew={true}
                 />
               ) : (
                 <div className="rounded-xl border border-dashed border-slate-300 px-4 py-5 text-sm text-slate-500">

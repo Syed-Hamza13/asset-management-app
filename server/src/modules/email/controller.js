@@ -18,7 +18,8 @@ const recipientCreate = z.object({
 const recipientUpdate = recipientCreate.partial();
 
 const ruleCreate = z.object({
-  assetTypeId: z.coerce.number().int().positive(),
+  assetTypeIds: z.array(z.coerce.number().int().positive()).min(1).optional(),
+  assetTypeId: z.coerce.number().int().positive().optional(),
   triggerType: z.enum(['asset_created', 'field_changed']),
   triggerFieldId: z.coerce.number().int().positive().nullish(),
   triggerCondition: z.enum(['any_change', 'equals', 'not_equals', 'filled', 'empty']).optional(),
@@ -26,8 +27,18 @@ const ruleCreate = z.object({
   templateId: z.coerce.number().int().positive(),
   recipientIds: z.array(z.coerce.number().int().positive()).min(1),
   isActive: z.boolean().optional(),
+}).refine((v) => (v.assetTypeIds && v.assetTypeIds.length) || v.assetTypeId, { message: 'At least one asset type is required.' });
+const ruleUpdate = z.object({
+  assetTypeIds: z.array(z.coerce.number().int().positive()).min(1).optional(),
+  assetTypeId: z.coerce.number().int().positive().optional(),
+  triggerType: z.enum(['asset_created', 'field_changed']).optional(),
+  triggerFieldId: z.coerce.number().int().positive().nullish(),
+  triggerCondition: z.enum(['any_change', 'equals', 'not_equals', 'filled', 'empty']).optional(),
+  triggerConditionValue: z.string().max(255).nullish(),
+  templateId: z.coerce.number().int().positive().optional(),
+  recipientIds: z.array(z.coerce.number().int().positive()).min(1).optional(),
+  isActive: z.boolean().optional(),
 });
-const ruleUpdate = ruleCreate.partial().extend({ recipientIds: z.array(z.coerce.number().int().positive()).min(1).optional() });
 
 const ok = (res, data, status = 200) => res.status(status).json({ success: true, data });
 

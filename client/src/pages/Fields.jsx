@@ -14,6 +14,7 @@ import {
 const types = [
   ["text", "Short Text"],
   ["multiline", "Multiline Text"],
+  ["mobile", "Mobile Number"],
   ["number", "Number"],
   ["quantity", "Quantity (1-15)"],
   ["boolean", "Yes / No"],

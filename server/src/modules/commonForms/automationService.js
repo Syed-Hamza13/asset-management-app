@@ -5,7 +5,7 @@ import { applyAutomationRules } from '../../../../shared/automationRules.js';
 import { ensureCommonForm } from './service.js';
 
 const CONDITIONS = new Set(['filled', 'empty', 'changed', 'equals']);
-const ACTIONS = new Set(['set_value', 'set_today']);
+const ACTIONS = new Set(['set_value', 'set_today', 'clear']);
 
 async function getFields(actor, formId) {
   const [rows] = await pool.execute(`SELECT f.id, f.name, f.\`key\` AS field_key, f.type, f.dropdown_id

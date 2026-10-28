@@ -174,6 +174,7 @@ export function AutomationBuilder({ assetTypeId, fields, commonForm = false }) {
               options={[
                 { value: "set_value", label: "Set a value" },
                 { value: "set_today", label: "Set today (Date)" },
+                { value: "clear", label: "Clear (leave blank)" },
               ]}
             />
             {actionType === "set_value" && (
@@ -202,10 +203,11 @@ export function AutomationBuilder({ assetTypeId, fields, commonForm = false }) {
               <span className="text-slate-400">→</span>
               <span className="font-medium">set {r.target_field_name}</span>
               <span className="text-slate-500">
-                to{" "}
-                {r.action_type === "set_today"
-                  ? "Today"
-                  : `“${labelFor(r.target_dropdown_id, r.action_value)}”`}
+                {r.action_type === "clear"
+                  ? "to blank"
+                  : r.action_type === "set_today"
+                    ? "to Today"
+                    : `to “${labelFor(r.target_dropdown_id, r.action_value)}”`}
               </span>
               <Button
                 variant="ghost"

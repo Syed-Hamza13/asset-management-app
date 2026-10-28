@@ -88,9 +88,11 @@ export async function deleteRecipient(actor, id) {
 }
 
 // ---------- Rules ----------
-function mapRule(r, recipients = []) {
+function mapRule(r, recipients = [], assetTypes = []) {
+  const types = assetTypes.length ? assetTypes : [{ id: Number(r.asset_type_id), name: r.asset_type_name }];
   return {
     id: r.id, assetTypeId: r.asset_type_id, assetTypeName: r.asset_type_name,
+    assetTypeIds: types.map((t) => Number(t.id)), assetTypes: types,
     triggerType: r.trigger_type, triggerFieldId: r.trigger_field_id, triggerFieldKey: r.trigger_field_key,
     triggerCondition: r.trigger_condition, triggerConditionValue: r.trigger_condition_value,
     templateId: r.template_id, templateName: r.template_name, isActive: Boolean(r.is_active),
@@ -110,8 +112,13 @@ async function loadRulesWithRecipients(actor, whereSql, params) {
   );
   if (!rows.length) return [];
   const ruleIds = rows.map((r) => r.id);
+  const inClause = ruleIds.map(() => '?').join(',');
   const [recips] = await pool.query(
-    `SELECT err.rule_id, r.id, r.name, r.email, r.is_active FROM email_rule_recipients err JOIN email_recipients r ON r.id = err.recipient_id WHERE err.rule_id IN (${ruleIds.map(() => '?').join(',')})`,
+    `SELECT err.rule_id, r.id, r.name, r.email, r.is_active FROM email_rule_recipients err JOIN email_recipients r ON r.id = err.recipient_id WHERE err.rule_id IN (${inClause})`,
+    ruleIds,
+  );
+  const [typeRows] = await pool.query(
+    `SELECT erat.rule_id, erat.asset_type_id AS id, at.name FROM email_rule_asset_types erat JOIN asset_types at ON at.id = erat.asset_type_id WHERE erat.rule_id IN (${inClause}) ORDER BY erat.asset_type_id ASC`,
     ruleIds,
   );
   const byRule = new Map();
@@ -119,12 +126,21 @@ async function loadRulesWithRecipients(actor, whereSql, params) {
     if (!byRule.has(rec.rule_id)) byRule.set(rec.rule_id, []);
     byRule.get(rec.rule_id).push({ id: rec.id, name: rec.name, email: rec.email, isActive: Boolean(rec.is_active) });
   }
-  return rows.map((r) => mapRule(r, byRule.get(r.id) || []));
+  const typesByRule = new Map();
+  for (const tr of typeRows) {
+    if (!typesByRule.has(tr.rule_id)) typesByRule.set(tr.rule_id, []);
+    typesByRule.get(tr.rule_id).push({ id: Number(tr.id), name: tr.name });
+  }
+  return rows.map((r) => mapRule(r, byRule.get(r.id) || [], typesByRule.get(r.id) || []));
 }
 export async function listRules(actor, assetTypeId) {
   if (assetTypeId === undefined) return loadRulesWithRecipients(actor, '', []);
   const id = assertIntegerId(assetTypeId, 'asset type id');
-  return loadRulesWithRecipients(actor, ' AND er.asset_type_id = ?', [id]);
+  return loadRulesWithRecipients(
+    actor,
+    ' AND EXISTS (SELECT 1 FROM email_rule_asset_types e WHERE e.rule_id = er.id AND e.asset_type_id = ?)',
+    [id],
+  );
 }
 export async function getRule(actor, id) {
   const idN = assertIntegerId(id, 'rule id');
@@ -133,22 +149,29 @@ export async function getRule(actor, id) {
   return rules[0];
 }
 
-async function validateRuleInputs(actor, conn, { assetTypeId, triggerType, triggerFieldId, templateId, recipientIds }) {
+async function validateRuleInputs(actor, conn, { assetTypeIds, triggerType, triggerFieldId, templateId, recipientIds }) {
   const typeScope = ownerScope(actor, 'owner_user_id');
-  const [[typeRow]] = await conn.execute(`SELECT id FROM asset_types WHERE id = ?${typeScope.sql} LIMIT 1`, [assetTypeId, ...typeScope.params]);
-  if (!typeRow) throw new AppError(404, 'ASSET_TYPE_NOT_FOUND', 'Asset type not found.');
+  const uniqueTypeIds = [...new Set((assetTypeIds || []).map((x) => assertIntegerId(x, 'asset type id')))];
+  if (!uniqueTypeIds.length) throw new AppError(400, 'ASSET_TYPES_REQUIRED', 'Select at least one asset type.');
+  const typeIn = uniqueTypeIds.map(() => '?').join(',');
+  const [typeRows] = await conn.query(
+    `SELECT id FROM asset_types WHERE id IN (${typeIn})${typeScope.sql}`,
+    [...uniqueTypeIds, ...typeScope.params],
+  );
+  if (typeRows.length !== uniqueTypeIds.length) throw new AppError(404, 'ASSET_TYPE_NOT_FOUND', 'One or more asset types were not found.');
 
   const [[tpl]] = await conn.execute(`SELECT id FROM email_templates WHERE id = ?${typeScope.sql} LIMIT 1`, [templateId, ...typeScope.params]);
   if (!tpl) throw new AppError(404, 'TEMPLATE_NOT_FOUND', 'Template not found.');
 
   if (triggerType === 'field_changed') {
     if (!triggerFieldId) throw new AppError(400, 'TRIGGER_FIELD_REQUIRED', 'A trigger field is required for field_changed rules.');
+    const fieldScope = ownerScope(actor, 'f.owner_user_id');
     const [[fieldRow]] = await conn.execute(
       `SELECT f.id FROM field_definitions f JOIN asset_type_fields atf ON atf.field_definition_id = f.id
-       WHERE f.id = ? AND atf.asset_type_id = ?${ownerScope(actor, 'f.owner_user_id').sql} LIMIT 1`,
-      [triggerFieldId, assetTypeId, ...ownerScope(actor, 'f.owner_user_id').params],
+       WHERE f.id = ? AND atf.asset_type_id IN (${typeIn})${fieldScope.sql} LIMIT 1`,
+      [triggerFieldId, ...uniqueTypeIds, ...fieldScope.params],
     );
-    if (!fieldRow) throw new AppError(400, 'TRIGGER_FIELD_INVALID', 'Trigger field must belong to this asset type.');
+    if (!fieldRow) throw new AppError(400, 'TRIGGER_FIELD_INVALID', 'Trigger field must belong to one of the selected asset types.');
   }
 
   if (!Array.isArray(recipientIds) || recipientIds.length === 0) throw new AppError(400, 'RECIPIENTS_REQUIRED', 'Select at least one recipient.');
@@ -158,11 +181,13 @@ async function validateRuleInputs(actor, conn, { assetTypeId, triggerType, trigg
     [...uniqueIds, ...typeScope.params],
   );
   if (recRows.length !== uniqueIds.length) throw new AppError(400, 'RECIPIENT_INVALID', 'One or more recipients do not belong to you.');
-  return uniqueIds;
+  return { uniqueTypeIds, recipientIds: uniqueIds };
 }
 
 export async function createRule(actor, input) {
-  const assetTypeId = assertIntegerId(input.assetTypeId, 'asset type id');
+  const assetTypeIds = Array.isArray(input.assetTypeIds)
+    ? input.assetTypeIds.map((x) => assertIntegerId(x, 'asset type id'))
+    : [assertIntegerId(input.assetTypeId, 'asset type id')];
   const templateId = assertIntegerId(input.templateId, 'template id');
   const triggerType = input.triggerType;
   if (!['asset_created', 'field_changed'].includes(triggerType)) throw new AppError(400, 'INVALID_TRIGGER', 'triggerType must be asset_created or field_changed.');
@@ -170,15 +195,17 @@ export async function createRule(actor, input) {
   const condition = triggerType === 'field_changed' ? (input.triggerCondition || 'any_change') : null;
   if (condition && !['any_change', 'equals', 'not_equals', 'filled', 'empty'].includes(condition)) throw new AppError(400, 'INVALID_CONDITION', 'Invalid trigger condition.');
   const conditionValue = condition === 'equals' || condition === 'not_equals' ? String(input.triggerConditionValue ?? '') : null;
+  const isActive = input.isActive === undefined ? true : Boolean(input.isActive);
 
   let newId;
   await withTransaction(async (conn) => {
-    const recipientIds = await validateRuleInputs(actor, conn, { assetTypeId, triggerType, triggerFieldId, templateId, recipientIds: input.recipientIds });
+    const { uniqueTypeIds, recipientIds } = await validateRuleInputs(actor, conn, { assetTypeIds, triggerType, triggerFieldId, templateId, recipientIds: input.recipientIds });
     const [r] = await conn.execute(
       `INSERT INTO email_rules (owner_user_id, asset_type_id, trigger_type, trigger_field_id, trigger_condition, trigger_condition_value, template_id, is_active) VALUES (?,?,?,?,?,?,?,?)`,
-      [actor.id, assetTypeId, triggerType, triggerType === 'field_changed' ? triggerFieldId : null, condition, conditionValue, templateId, input.isActive === undefined ? true : Boolean(input.isActive)],
+      [actor.id, uniqueTypeIds[0], triggerType, triggerType === 'field_changed' ? triggerFieldId : null, condition, conditionValue, templateId, isActive],
     );
     newId = r.insertId;
+    for (const tid of uniqueTypeIds) await conn.execute('INSERT INTO email_rule_asset_types (rule_id, asset_type_id) VALUES (?,?)', [newId, tid]);
     for (const rid of recipientIds) await conn.execute('INSERT INTO email_rule_recipients (rule_id, recipient_id) VALUES (?,?)', [newId, rid]);
   });
   return getRule(actor, newId);
@@ -186,7 +213,9 @@ export async function createRule(actor, input) {
 
 export async function updateRule(actor, id, input) {
   const existing = await getRule(actor, id);
-  const assetTypeId = input.assetTypeId ? assertIntegerId(input.assetTypeId, 'asset type id') : existing.assetTypeId;
+  const assetTypeIds = Array.isArray(input.assetTypeIds)
+    ? input.assetTypeIds.map((x) => assertIntegerId(x, 'asset type id'))
+    : existing.assetTypeIds;
   const templateId = input.templateId ? assertIntegerId(input.templateId, 'template id') : existing.templateId;
   const triggerType = input.triggerType ?? existing.triggerType;
   if (!['asset_created', 'field_changed'].includes(triggerType)) throw new AppError(400, 'INVALID_TRIGGER', 'triggerType must be asset_created or field_changed.');
@@ -197,11 +226,13 @@ export async function updateRule(actor, id, input) {
   const recipientIds = input.recipientIds ?? existing.recipients.map((r) => r.id);
 
   await withTransaction(async (conn) => {
-    const validatedRecipients = await validateRuleInputs(actor, conn, { assetTypeId, triggerType, triggerFieldId, templateId, recipientIds });
+    const { uniqueTypeIds, recipientIds: validatedRecipients } = await validateRuleInputs(actor, conn, { assetTypeIds, triggerType, triggerFieldId, templateId, recipientIds });
     await conn.execute(
       `UPDATE email_rules SET asset_type_id=?, trigger_type=?, trigger_field_id=?, trigger_condition=?, trigger_condition_value=?, template_id=?, is_active=? WHERE id=?`,
-      [assetTypeId, triggerType, triggerType === 'field_changed' ? triggerFieldId : null, condition, conditionValue, templateId, isActive, existing.id],
+      [uniqueTypeIds[0], triggerType, triggerType === 'field_changed' ? triggerFieldId : null, condition, conditionValue, templateId, isActive, existing.id],
     );
+    await conn.execute('DELETE FROM email_rule_asset_types WHERE rule_id = ?', [existing.id]);
+    for (const tid of uniqueTypeIds) await conn.execute('INSERT INTO email_rule_asset_types (rule_id, asset_type_id) VALUES (?,?)', [existing.id, tid]);
     await conn.execute('DELETE FROM email_rule_recipients WHERE rule_id = ?', [existing.id]);
     for (const rid of validatedRecipients) await conn.execute('INSERT INTO email_rule_recipients (rule_id, recipient_id) VALUES (?,?)', [existing.id, rid]);
   });
@@ -243,9 +274,10 @@ export async function sendRuleTest(actor, id) {
   const scope = ownerScope(actor);
   const [tplRows] = await pool.execute(`SELECT subject_template, body_template FROM email_templates WHERE id = ?${scope.sql} LIMIT 1`, [rule.templateId, ...scope.params]);
   if (!tplRows.length) throw new AppError(404, 'TEMPLATE_NOT_FOUND', 'Template not found.');
-  const [fieldRows] = await pool.execute(
-    `SELECT f.\`key\` FROM asset_type_fields atf JOIN field_definitions f ON f.id = atf.field_definition_id WHERE atf.asset_type_id = ?`,
-    [rule.assetTypeId],
+  const typeIds = (rule.assetTypeIds && rule.assetTypeIds.length ? rule.assetTypeIds : [rule.assetTypeId]).map(() => '?').join(',');
+  const [fieldRows] = await pool.query(
+    `SELECT DISTINCT f.\`key\` FROM asset_type_fields atf JOIN field_definitions f ON f.id = atf.field_definition_id WHERE atf.asset_type_id IN (${typeIds})`,
+    (rule.assetTypeIds && rule.assetTypeIds.length ? rule.assetTypeIds : [rule.assetTypeId]),
   );
   const sampleFields = Object.fromEntries(fieldRows.map((f) => [f.key, `sample ${f.key}`]));
   const payload = {

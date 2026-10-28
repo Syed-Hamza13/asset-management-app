@@ -7,9 +7,10 @@ async function loadRules(conn, actor, assetTypeId, triggerType) {
             et.name AS template_name, et.subject_template, et.body_template,
             fd.\`key\` AS trigger_field_key
      FROM email_rules er
+     JOIN email_rule_asset_types erat ON erat.rule_id = er.id
      JOIN email_templates et ON et.id = er.template_id
      LEFT JOIN field_definitions fd ON fd.id = er.trigger_field_id
-     WHERE er.asset_type_id = ? AND er.trigger_type = ? AND er.is_active = 1${scope.sql}`,
+     WHERE erat.asset_type_id = ? AND er.trigger_type = ? AND er.is_active = 1${scope.sql}`,
     [assetTypeId, triggerType, ...scope.params],
   );
   if (!rules.length) return [];

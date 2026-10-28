@@ -7,7 +7,7 @@ import { getEffectiveCommonRules } from '../commonForms/automationService.js';
 import { getAssetType } from '../assetTypes/service.js';
 
 const CONDITIONS = new Set(['filled', 'empty', 'changed', 'equals']);
-const ACTIONS = new Set(['set_value', 'set_today']);
+const ACTIONS = new Set(['set_value', 'set_today', 'clear']);
 
 export async function listAutomations(actor, assetTypeId) {
   const id = assertIntegerId(assetTypeId, 'asset type id');

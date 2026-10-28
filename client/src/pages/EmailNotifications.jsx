@@ -29,12 +29,30 @@ function Tabs({ tab, setTab }) {
 function TemplatesTab() {
   const { showToast } = useToast();
   const [rows, setRows] = useState([]);
+  const [types, setTypes] = useState([]);
+  const [fieldType, setFieldType] = useState("");
+  const [typeFields, setTypeFields] = useState([]);
+  const [insertPrevious, setInsertPrevious] = useState(false);
   const [error, setError] = useState("");
   const [editing, setEditing] = useState(null);
   async function load() {
-    try { setRows((await api.email.templates.list()).data); } catch (e) { setError(e.message); }
+    try {
+      const [t, tp] = await Promise.all([api.assetTypes.list(), api.email.templates.list()]);
+      setTypes(t.data); setRows(tp.data);
+    } catch (e) { setError(e.message); }
   }
   useEffect(() => { load(); }, []);
+  useEffect(() => {
+    let active = true;
+    if (!fieldType) { setTypeFields([]); return; }
+    api.assetTypes.form(fieldType)
+      .then((res) => { if (active) setTypeFields(res.data); })
+      .catch(() => { if (active) setTypeFields([]); });
+    return () => { active = false; };
+  }, [fieldType]);
+  function insert(token) {
+    setEditing((cur) => ({ ...cur, bodyTemplate: `${cur.bodyTemplate || ""}${token}` }));
+  }
   async function save(e) {
     e.preventDefault();
     try {
@@ -75,13 +93,39 @@ function TemplatesTab() {
             <Input label="Subject" value={editing.subjectTemplate} onChange={(e) => setEditing({ ...editing, subjectTemplate: e.target.value })} required />
             <Input label="Body" type="textarea" value={editing.bodyTemplate} onChange={(e) => setEditing({ ...editing, bodyTemplate: e.target.value })} hint="Plain text. Use placeholders below." />
             <div>
-              <div className="mb-1.5 text-xs font-semibold uppercase tracking-wide text-slate-400">Placeholders</div>
+              <div className="mb-1.5 text-xs font-semibold uppercase tracking-wide text-slate-400">General placeholders</div>
               <div className="flex flex-wrap gap-1.5">
                 {PLACEHOLDERS.map((p) => (
                   <button key={p} type="button" className="rounded-lg bg-slate-100 px-2 py-1 font-mono text-xs text-slate-600 hover:bg-slate-200"
-                    onClick={() => setEditing({ ...editing, bodyTemplate: `${editing.bodyTemplate || ""}${p}` })}>{p}</button>
+                    onClick={() => insert(p)}>{p}</button>
                 ))}
               </div>
+            </div>
+            <div>
+              <div className="mb-1.5 text-xs font-semibold uppercase tracking-wide text-slate-400">Asset field placeholders</div>
+              <p className="mb-2 text-xs text-slate-500">Pick an asset type to insert its fields. Each rule sends the fields of the asset that triggered it, so use fields shared by the types in your rule.</p>
+              <div className="flex flex-wrap items-center gap-2">
+                <select value={fieldType} onChange={(e) => setFieldType(e.target.value)} className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-sm">
+                  <option value="">Select an asset type…</option>
+                  {types.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
+                </select>
+                <label className="flex items-center gap-1.5 text-xs text-slate-600">
+                  <input type="checkbox" checked={insertPrevious} onChange={(e) => setInsertPrevious(e.target.checked)} />
+                  use previous value (.previous)
+                </label>
+              </div>
+              {fieldType && (
+                typeFields.length ? (
+                  <div className="mt-2 flex flex-wrap gap-1.5">
+                    {typeFields.map((f) => (
+                      <button key={f.id} type="button" title={f.name} className="rounded-lg bg-indigo-50 px-2 py-1 font-mono text-xs text-indigo-700 hover:bg-indigo-100"
+                        onClick={() => insert(`{{field.${f.key}${insertPrevious ? ".previous" : ""}}}`)}>
+                        {f.name}
+                      </button>
+                    ))}
+                  </div>
+                ) : <div className="mt-2 text-xs text-slate-400">No fields configured for this asset type yet.</div>
+              )}
             </div>
             <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={editing.isActive} onChange={(e) => setEditing({ ...editing, isActive: e.target.checked })} /> Active</label>
             <div className="flex justify-end gap-2"><Button type="button" variant="secondary" onClick={() => setEditing(null)}>Cancel</Button><Button>Save template</Button></div>
@@ -156,23 +200,35 @@ function RulesTab() {
     } catch (e) { setError(e.message); }
   }
   useEffect(() => { load(); }, []);
-  async function loadFields(typeId) {
-    if (!typeId) { setTypeFields([]); return; }
-    try { setTypeFields((await api.assetTypes.form(typeId)).data); } catch { setTypeFields([]); }
+  async function loadFields(typeIds) {
+    if (!typeIds || !typeIds.length) { setTypeFields([]); return; }
+    try {
+      const forms = await Promise.all(typeIds.map((id) => api.assetTypes.form(id)));
+      const lists = forms.map((res) => res.data || []);
+      const intersection = lists[0].filter((f) => lists.every((l) => l.some((x) => x.id === f.id)));
+      setTypeFields(intersection);
+    } catch { setTypeFields([]); }
   }
   function startNew() {
-    setEditing({ assetTypeId: "", triggerType: "asset_created", triggerFieldId: "", triggerCondition: "any_change", triggerConditionValue: "", templateId: "", recipientIds: [], isActive: true });
+    setEditing({ assetTypeIds: [], triggerType: "asset_created", triggerFieldId: "", triggerCondition: "any_change", triggerConditionValue: "", templateId: "", recipientIds: [], isActive: true });
     setTypeFields([]);
   }
   function startEdit(row) {
-    setEditing({ ...row, triggerFieldId: row.triggerFieldId || "", triggerConditionValue: row.triggerConditionValue || "", recipientIds: row.recipients.map((r) => r.id) });
-    loadFields(row.assetTypeId);
+    const ids = (row.assetTypeIds && row.assetTypeIds.length ? row.assetTypeIds : [row.assetTypeId]).map(Number);
+    setEditing({ ...row, assetTypeIds: ids, triggerFieldId: row.triggerFieldId || "", triggerConditionValue: row.triggerConditionValue || "", recipientIds: row.recipients.map((r) => r.id) });
+    loadFields(ids);
+  }
+  function toggleAssetType(id, checked) {
+    const ids = checked ? [...new Set([...editing.assetTypeIds, id])] : editing.assetTypeIds.filter((x) => x !== id);
+    setEditing((cur) => ({ ...cur, assetTypeIds: ids, triggerFieldId: "" }));
+    loadFields(ids);
   }
   async function save(e) {
     e.preventDefault();
+    if (!editing.assetTypeIds.length) { setError("Select at least one asset type."); return; }
     try {
       const body = {
-        assetTypeId: Number(editing.assetTypeId),
+        assetTypeIds: editing.assetTypeIds.map(Number),
         triggerType: editing.triggerType,
         triggerFieldId: editing.triggerType === "field_changed" ? Number(editing.triggerFieldId) : null,
         triggerCondition: editing.triggerType === "field_changed" ? editing.triggerCondition : undefined,
@@ -208,7 +264,7 @@ function RulesTab() {
           {rows.map((r) => (
             <div key={r.id} className="flex flex-wrap items-center justify-between gap-3 px-4 py-3">
               <div className="min-w-0">
-                <div className="font-medium">{r.assetTypeName} {!r.isActive && <span className="ml-1 rounded bg-slate-100 px-1.5 py-0.5 text-xs text-slate-500">inactive</span>}</div>
+                <div className="font-medium">{(r.assetTypes && r.assetTypes.length ? r.assetTypes : [{ name: r.assetTypeName }]).map((t) => t.name).join(", ")} {!r.isActive && <span className="ml-1 rounded bg-slate-100 px-1.5 py-0.5 text-xs text-slate-500">inactive</span>}</div>
                 <div className="text-xs text-slate-500">
                   {r.triggerType === "asset_created" ? "On asset created" : `On "${r.triggerFieldKey}" ${r.triggerCondition}${["equals", "not_equals"].includes(r.triggerCondition) ? ` ${r.triggerConditionValue}` : ""}`} · template "{r.templateName}" · {r.recipients.length} recipient(s)
                 </div>
@@ -225,7 +281,18 @@ function RulesTab() {
       <Modal open={Boolean(editing)} title={editing?.id ? "Edit Rule" : "New Rule"} onClose={() => setEditing(null)} className="max-w-2xl">
         {editing && (
           <form onSubmit={save} className="space-y-4">
-            <Select hideBlank label="Asset type" value={editing.assetTypeId} onChange={(e) => { setEditing({ ...editing, assetTypeId: e.target.value, triggerFieldId: "" }); loadFields(e.target.value); }} options={[{ value: "", label: "Select…" }, ...types.map((t) => ({ value: t.id, label: t.name }))]} required />
+            <div>
+              <div className="mb-1.5 text-sm font-medium text-slate-700">Asset types <span className="text-red-500">*</span></div>
+              <div className="grid max-h-40 gap-1.5 overflow-auto rounded-lg border border-slate-200 p-2 sm:grid-cols-2">
+                {types.map((t) => (
+                  <label key={t.id} className="flex items-center gap-2 rounded-lg px-2 py-1 text-sm hover:bg-slate-50">
+                    <input type="checkbox" className="h-4 w-4 rounded border-slate-300" checked={editing.assetTypeIds.includes(t.id)} onChange={(e) => toggleAssetType(t.id, e.target.checked)} />
+                    <span className="truncate">{t.name}</span>
+                  </label>
+                ))}
+              </div>
+              {!editing.assetTypeIds.length && <div className="mt-1 text-xs text-slate-500">Select at least one asset type.</div>}
+            </div>
             <Select hideBlank label="Trigger" value={editing.triggerType} onChange={(e) => setEditing({ ...editing, triggerType: e.target.value })} options={[{ value: "asset_created", label: "When an asset is created" }, { value: "field_changed", label: "When a field changes" }]} />
             {editing.triggerType === "field_changed" && (
               <>

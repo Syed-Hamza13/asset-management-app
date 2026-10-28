@@ -1,5 +1,5 @@
 export const AUTOMATION_CONDITIONS = ['filled', 'empty', 'changed', 'equals'];
-export const AUTOMATION_ACTIONS = ['set_value', 'set_today'];
+export const AUTOMATION_ACTIONS = ['set_value', 'set_today', 'clear'];
 
 export function automationToday() {
   return new Intl.DateTimeFormat('en-CA', {
@@ -22,6 +22,7 @@ export function conditionMatches(rule, sourceValue, previousValue) {
 }
 
 export function actionValue(rule) {
+  if (rule.actionType === 'clear') return '';
   if (rule.actionType === 'set_today') return automationToday();
   if (rule.targetType === 'number') return Number(rule.actionValue);
   if (rule.targetType === 'boolean') return rule.actionValue === 'true';

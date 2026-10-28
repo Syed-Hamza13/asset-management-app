@@ -14,13 +14,18 @@ export function DynamicForm({
   disabled = false,
   automations = [],
   previousValues = {},
+  isNew = false,
 }) {
   const automatedRef = useRef(new Set());
   const manualRef = useRef(new Set());
   const applyingRef = useRef(false);
   const lastValuesRef = useRef(values);
 
+  // auto_date defaults to today only when an asset is being created for the
+  // first time. On edit we must preserve whatever the user saved (including a
+  // deliberately blank value), so this effect is a no-op unless isNew.
   useEffect(() => {
+    if (!isNew) return;
     setValues((current) => {
       const next = { ...current };
       let changed = false;
@@ -37,7 +42,7 @@ export function DynamicForm({
       }
       return changed ? next : current;
     });
-  }, [fields, setValues]);
+  }, [fields, setValues, isNew]);
 
   useEffect(() => {
     if (applyingRef.current) {
@@ -96,6 +101,21 @@ export function DynamicForm({
               key={field.id}
               label={field.name}
               type="textarea"
+              value={value ?? ""}
+              onChange={(e) =>
+                setValues((v) => ({ ...v, [field.key]: e.target.value }))
+              }
+              {...common}
+            />
+          );
+        if (field.type === "mobile")
+          return (
+            <Input
+              key={field.id}
+              label={field.name}
+              type="tel"
+              inputMode="tel"
+              placeholder="e.g. 9876543210"
               value={value ?? ""}
               onChange={(e) =>
                 setValues((v) => ({ ...v, [field.key]: e.target.value }))
