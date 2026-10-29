@@ -4,6 +4,12 @@ services:
     container_name: asset-management-app
     restart: unless-stopped
 
+    # NOTE for the Settings "Network restriction (IP allowlist)" feature: with a
+    # published port and Docker's default userland proxy, the container sees the
+    # bridge gateway IP (e.g. 172.17.0.1) for every visitor, so per-device ranges
+    # never match. Either replace this block with `network_mode: "host"`, or set
+    # `"userland-proxy": false` in /etc/docker/daemon.json on the host. Verify the
+    # "IP the server sees for you" line on a second device before switching on.
     ports:
       - "4000:4000"
 
@@ -37,4 +43,10 @@ services:
       EMAIL_WORKER_ENABLED: "true"
       EMAIL_WORKER_INTERVAL_MS: 15000
       EMAIL_MAX_ATTEMPTS: 5
+
+      # Break-glass for the Settings "Network restriction (IP allowlist)" feature.
+      # While "true" (default) the saved allowlist gates sign-in and Quick Entry.
+      # Set to "false" and recreate the container if an allowlist mistake ever
+      # locks every admin out; fix the list in Settings, then set it back.
+      IP_ACCESS_ENFORCE: "true"
 

@@ -108,6 +108,11 @@ SMTP_ENCRYPTION_KEY=replace_with_a_long_random_secret_at_least_32_chars
 EMAIL_WORKER_ENABLED=true
 EMAIL_WORKER_INTERVAL_MS=15000
 EMAIL_MAX_ATTEMPTS=5
+
+# Network restriction (IP allowlist) break-glass. Leave unset to enforce the
+# allowlist configured in Settings. Set to false and restart if a saved list
+# ever locks every admin out of sign-in.
+IP_ACCESS_ENFORCE=true
 ```
 
 For frontend build-time Turnstile config in local development, create a `client/.env` file if needed:
@@ -196,6 +201,9 @@ services:
       EMAIL_WORKER_ENABLED: "true"
       EMAIL_WORKER_INTERVAL_MS: 15000
       EMAIL_MAX_ATTEMPTS: 5
+
+      # "false" disables the Settings IP allowlist (break-glass after a lockout).
+      IP_ACCESS_ENFORCE: "true"
 ```
 
 ### 3) Start the container
@@ -238,6 +246,24 @@ Before public deployment, make sure:
 - HTTPS is enabled in front of the app
 - `FRONTEND_URL` matches your real domain or IP
 - `.env` files are not committed to GitHub
+- optionally restrict sign-in and Quick Entry to your office networks — see **Network restriction (IP allowlist)** below
+
+
+## Network restriction (IP allowlist)
+
+Admins can limit the app to specific IP addresses or networks from **Settings → Network restriction (IP allowlist)**. Two switches share one allowlist: *Restrict the whole app* (sign-in and every route) and *Restrict Quick Entry* (only the public form).
+
+- Accepted entries: a single address (`192.168.1.23`), a CIDR block (`192.168.1.0/24`), a from-to range (`10.0.0.5-10.0.0.40`) or a trailing wildcard (`192.168.7.*`). One per line, or comma/semicolon separated. Maximum 200 entries.
+- **A blocked address sees nothing.** Every request — the page, the assets and any API route — answers with status `404`. HTML requests get a standalone page whose only content is a large centred `404` (no app bundle, no links, no error text, no service worker), and API requests get the same JSON error the app uses for unknown routes, so nothing hints that the app exists. The real reason and the caller's address are only written to the server log. When only the Quick Entry switch is on, the app stays reachable and the card disappears because `GET /quick-entry/public-config` reports the form disabled.
+- Addresses are compared against the **TCP socket** address, not `X-Forwarded-For`. `app.set('trust proxy', 1)` is on and nothing in front of the container overwrites that header, so `X-Forwarded-For` — and therefore `req.ip` — is client-controlled; a spoofed header cannot get past the gate (verified).
+- **Docker must see the real client address.** With a published port (`ports:`) and Docker's default userland proxy, the container observes the bridge gateway IP (e.g. `172.17.0.1`) for *every* visitor, so a per-device range can never match. Use one of:
+  - `network_mode: "host"` on the service (then `PORT` must be the port you actually want exposed), or
+  - `"userland-proxy": false` in `/etc/docker/daemon.json` on the host, which keeps the client source address through the DNAT rule.
+  Confirm from a second device with the **"IP the server sees for you"** line on the Settings card before switching the gate on.
+- **Fail-open:** a switch that is on but has no readable entry allows access and logs a warning, so a mistyped list degrades to the old behaviour instead of a lockout. Saving an invalid entry is rejected with the offending line quoted.
+- **Break-glass:** if an allowlist ever locks every admin out, set `IP_ACCESS_ENFORCE=false` in the environment and restart the container. The allowlist is then saved but not applied; correct it in Settings and remove the override.
+- Two paths stay reachable so a lockout is repairable: `/health` (monitoring) and `GET/PUT /api/v1/settings/ip-access` **for an already-signed-in session** — a signed-out stranger still gets the same 404 there.
+- **Only the Express server is the gate.** The Vite dev server (`client/vite.config.js`, port 5173) has no allowlist and proxies `/api` from its own loopback socket, so a machine reaching it looks like `127.0.0.1` to Express and passes the gate. It is therefore bound to `127.0.0.1`; to test the restriction from another device, open `http://<this-machine>:3000`, which is the same edge production uses.
 
 
 

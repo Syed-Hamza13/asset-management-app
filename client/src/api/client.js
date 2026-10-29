@@ -192,6 +192,10 @@ export const api = {
     testConnection: () => request("/settings/smtp/test-connection", { method: "POST" }),
     testEmail: (to) => request("/settings/smtp/test-email", { method: "POST", body: JSON.stringify({ to }) }),
   },
+  ipAccess: {
+    get: () => request("/settings/ip-access"),
+    update: (body) => request("/settings/ip-access", { method: "PUT", body: JSON.stringify(body) }),
+  },
   email: {
     templates: {
       list: () => request("/email/templates"),

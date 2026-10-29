@@ -22,7 +22,9 @@ function Protected() {
   const { user, booting } = useAuth();
   const location = useLocation();
   if (booting) return <div className="grid min-h-screen place-items-center text-sm text-slate-500">Loading...</div>;
-  if (!user) return <Navigate to="/login" state={{ from: location.pathname }} replace />;
+  // The root path shows the sign-in screen in place, so opening http://host:port/ lands
+  // straight on the app; deep links still bounce via /login to keep ?from working.
+  if (!user) return location.pathname === '/' ? <Login /> : <Navigate to="/login" state={{ from: location.pathname }} replace />;
   if (user.mustChangePassword && location.pathname !== '/settings') return <Navigate to="/settings" replace />;
   return <Outlet />;
 }

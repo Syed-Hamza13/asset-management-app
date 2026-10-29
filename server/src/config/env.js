@@ -20,7 +20,11 @@ const schema = z.object({
   SMTP_ENCRYPTION_KEY: z.string().default(''),
   EMAIL_WORKER_ENABLED: z.enum(['true', 'false']).default('true'),
   EMAIL_WORKER_INTERVAL_MS: z.coerce.number().int().positive().default(15_000),
-  EMAIL_MAX_ATTEMPTS: z.coerce.number().int().positive().default(5)
+  EMAIL_MAX_ATTEMPTS: z.coerce.number().int().positive().default(5),
+  // Break-glass for the IP allowlist: set to 'false' and restart if an
+  // allowlist mistake ever locks an admin out. Login/quick-entry are gated
+  // while this is 'true' (default).
+  IP_ACCESS_ENFORCE: z.enum(['true', 'false']).default('true')
 });
 
 export const env = schema.parse(process.env);

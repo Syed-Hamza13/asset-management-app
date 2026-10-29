@@ -11,6 +11,7 @@ import * as commonAutomation from './modules/commonForms/automationController.js
 import * as user from './modules/users/controller.js';
 import * as smtp from './modules/smtp/controller.js';
 import * as turnstile from './modules/turnstile/controller.js';
+import * as ipAccess from './modules/ipAccess/controller.js';
 import * as email from './modules/email/controller.js';
 import * as quickEntry from './modules/quickEntry/controller.js';
 import * as notification from './modules/notifications/controller.js';
@@ -84,6 +85,11 @@ router.post('/settings/smtp/test-connection', requireAdmin, emailTestRateLimit, 
 router.post('/settings/smtp/test-email', requireAdmin, emailTestRateLimit, smtp.testEmail);
 router.get('/settings/turnstile', requireAdmin, turnstile.get);
 router.put('/settings/turnstile', requireAdmin, turnstile.update);
+// IP allowlist for login + quick entry (admin-only). These stay reachable from
+// any IP so an allowlist edit can be corrected; the env break-glass covers a
+// login lockout.
+router.get('/settings/ip-access', requireAdmin, ipAccess.get);
+router.put('/settings/ip-access', requireAdmin, ipAccess.update);
 
 // Email templates / recipients / rules / history (per-user)
 router.get('/email/templates', requirePermission('email.templates.manage_own', 'email.rules.manage_own'), email.listTemplates);
