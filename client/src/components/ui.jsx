@@ -55,6 +55,90 @@ export function Input({ label, hint, error, ...props }) {
   );
 }
 
+const searchSizes = {
+  sm: {
+    box: "h-9 text-sm",
+    icon: "left-2.5 h-3.5 w-3.5",
+    input: "pl-8 pr-8",
+    clear: "right-1.5 h-6 w-6 text-base",
+  },
+  md: {
+    box: "h-11 text-sm",
+    icon: "left-3 h-4 w-4",
+    input: "pl-9 pr-9",
+    clear: "right-2 h-7 w-7 text-lg",
+  },
+  lg: {
+    box: "h-12 text-base",
+    icon: "left-3.5 h-4 w-4",
+    input: "pl-10 pr-10",
+    clear: "right-2.5 h-7 w-7 text-lg",
+  },
+};
+
+export function SearchInput({
+  value,
+  onChange,
+  onClear,
+  placeholder = "Search...",
+  size = "md",
+  className = "",
+  inputClassName = "",
+  disabled = false,
+  onKeyDown,
+  ...props
+}) {
+  const s = searchSizes[size] || searchSizes.md;
+  function clear() {
+    if (onClear) onClear();
+    else onChange?.({ target: { value: "" } });
+  }
+  function handleKeyDown(event) {
+    if (event.key === "Escape" && value) {
+      event.preventDefault();
+      clear();
+    }
+    onKeyDown?.(event);
+  }
+  return (
+    <div className={`relative ${className}`}>
+      <svg
+        aria-hidden="true"
+        viewBox="0 0 20 20"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.8"
+        className={`pointer-events-none absolute top-1/2 -translate-y-1/2 text-slate-400 ${s.icon}`}
+      >
+        <circle cx="8.5" cy="8.5" r="5.5" />
+        <path d="m13 13 4 4" strokeLinecap="round" />
+      </svg>
+      <input
+        type="text"
+        enterKeyHint="search"
+        value={value}
+        onChange={onChange}
+        onKeyDown={handleKeyDown}
+        placeholder={placeholder}
+        disabled={disabled}
+        className={`w-full rounded-xl border border-slate-200 bg-white ${s.box} ${s.input} outline-none transition placeholder:text-slate-400 focus:border-slate-400 focus:ring-4 focus:ring-slate-100 disabled:cursor-not-allowed disabled:bg-slate-50 ${inputClassName}`}
+        {...props}
+      />
+      {value && !disabled && (
+        <button
+          type="button"
+          onClick={clear}
+          aria-label="Clear search"
+          title="Clear search"
+          className={`absolute top-1/2 grid -translate-y-1/2 place-items-center rounded-full text-slate-400 transition hover:bg-slate-100 hover:text-slate-700 ${s.clear}`}
+        >
+          ×
+        </button>
+      )}
+    </div>
+  );
+}
+
 export function DateInput({ label, value, onChange, error, required, disabled }) {
   const pickerRef = useRef(null);
   const [display, setDisplay] = useState(value ? formatDateValue(value) : "");

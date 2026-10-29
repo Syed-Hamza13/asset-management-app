@@ -9,6 +9,7 @@ import {
   EmptyState,
   Modal,
   Input,
+  SearchInput,
   Alert,
 } from "../components/ui";
 import { DynamicForm } from "../components/DynamicForm";
@@ -28,6 +29,7 @@ export function Dashboard() {
   const canCreateAsset = can("assets.create_own");
   const canCreateType = can("asset_types.create_own");
   const [typeSearch, setTypeSearch] = useState("");
+  const [typeQuery, setTypeQuery] = useState("");
   const [selectedType, setSelectedType] = useState(null);
   const [typePickerOpen, setTypePickerOpen] = useState(true);
   const [fields, setFields] = useState([]);
@@ -74,6 +76,10 @@ export function Dashboard() {
   );
   const canCreateInlineType =
     canCreateType && typeSearch.trim().length > 0 && !exactType;
+  const typeQueryTrimmed = typeQuery.trim().toLowerCase();
+  const visibleTypes = typeQueryTrimmed
+    ? types.filter((type) => type.name.toLowerCase().includes(typeQueryTrimmed))
+    : types;
 
   function openAddAsset() {
     setError("");
@@ -192,6 +198,23 @@ export function Dashboard() {
           <Alert>{error}</Alert>
         </div>
       )}
+      {!loading && types.length > 0 && (
+        <div className="mb-4 flex flex-wrap items-center gap-3">
+          <SearchInput
+            value={typeQuery}
+            onChange={(e) => setTypeQuery(e.target.value)}
+            placeholder="Search asset types by name"
+            aria-label="Search asset types"
+            className="w-full sm:w-80"
+          />
+          {typeQueryTrimmed && (
+            <span className="text-sm text-slate-500">
+              {visibleTypes.length} of {types.length} asset type
+              {types.length === 1 ? "" : "s"}
+            </span>
+          )}
+        </div>
+      )}
       {loading ? (
         <Card className="p-10 text-center text-sm text-slate-500">
           Loading...
@@ -208,9 +231,19 @@ export function Dashboard() {
             ) : undefined
           }
         />
+      ) : visibleTypes.length === 0 ? (
+        <EmptyState
+          title={`No asset type matches “${typeQuery.trim()}”`}
+          description="Try a different name, or clear the search to see every asset type."
+          action={
+            <Button variant="secondary" onClick={() => setTypeQuery("")}>
+              Clear search
+            </Button>
+          }
+        />
       ) : (
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          {types.map((t) => (
+          {visibleTypes.map((t) => (
             <Card key={t.id} className="p-5 transition hover:-translate-y-0.5 hover:shadow-md">
               <Link to={`/asset-types/${t.id}`} className="block">
                 <div className="flex items-start justify-between">

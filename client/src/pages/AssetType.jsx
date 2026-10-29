@@ -12,6 +12,7 @@ import {
   Modal,
 } from "../components/ui"; 
 import { AutomationBuilder } from "../components/AutomationBuilder";
+import { AssetForm } from "../components/AssetForm";
 import { formatDateValue } from "../utils";
 import { indianDateToIso } from "../utils/date";
 import * as XLSX from "xlsx";
@@ -211,6 +212,8 @@ export function AssetType() {
   const [shareSelected, setShareSelected] = useState([]);
   const [shareLoading, setShareLoading] = useState(false);
   const [shareSaving, setShareSaving] = useState(false);
+  const [editAsset, setEditAsset] = useState(null);
+  const canEditAsset = can("assets.edit_own");
   async function load() {
     try {
       const [t, f, fl] = await Promise.all([
@@ -244,6 +247,7 @@ export function AssetType() {
     setColumnFilters({});
     setSelectedAssetIds([]);
     setBulkAction("");
+    setEditAsset(null);
   }, [id]);
   useEffect(() => {
     setSelectedAssetIds((current) => current.filter((publicId) => assets?.items.some((asset) => asset.publicId === publicId)));
@@ -346,6 +350,10 @@ export function AssetType() {
     } finally {
       setShareSaving(false);
     }
+  }
+  async function assetEdited() {
+    setEditAsset(null);
+    await load();
   }
   const visibleFields = form.filter((f) => f.showInList !== false);
   const displayValue = (asset, field) => {
@@ -651,13 +659,23 @@ export function AssetType() {
                               {displayValue(a, f)}
                             </td>
                           ))}
-                        <td className="px-4 py-3 text-right">
-                          <Link
-                            className="font-semibold text-slate-700"
-                            to={`/assets/${a.publicId}`}
-                          >
-                            Open →
-                          </Link>
+                        <td className="whitespace-nowrap px-4 py-3 text-right">
+                          {canEditAsset ? (
+                            <button
+                              type="button"
+                              className="font-semibold text-slate-700 hover:text-slate-950"
+                              onClick={() => setEditAsset(a)}
+                            >
+                              Edit
+                            </button>
+                          ) : (
+                            <Link
+                              className="font-semibold text-slate-700"
+                              to={`/assets/${a.publicId}`}
+                            >
+                              Open →
+                            </Link>
+                          )}
                         </td>
                       </tr>
                     ))}
@@ -945,6 +963,33 @@ export function AssetType() {
             </Button>
           </div>
         </div>
+      </Modal>
+      <Modal
+        open={Boolean(editAsset)}
+        title={`Edit ${type.name}${
+          editAsset && visibleFields[0]
+            ? ` · ${displayValue(editAsset, visibleFields[0]).slice(0, 40)}`
+            : ""
+        }`}
+        onClose={() => setEditAsset(null)}
+        className="max-w-3xl"
+      >
+        {editAsset && (
+          <AssetForm
+            assetTypeId={id}
+            publicId={editAsset.publicId}
+            onSaved={assetEdited}
+            onCancel={() => setEditAsset(null)}
+            footerExtra={
+              <Link
+                to={`/assets/${editAsset.publicId}`}
+                className="text-sm text-slate-500 hover:text-slate-900"
+              >
+                View full page
+              </Link>
+            }
+          />
+        )}
       </Modal>
     </div>
   );
