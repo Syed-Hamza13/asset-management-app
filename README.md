@@ -277,6 +277,17 @@ The app supports multiple accounts on top of the initial admin.
 - New users must change their temporary password on first login; until they do, they are routed to the Settings page.
 - Deactivating a user immediately invalidates their active sessions.
 
+### Copy the common form to another user
+
+Sharing is not how the common form works — every user owns exactly one common form, and its rows point at that user's own field definitions. So instead of sharing, the admin can **copy** their own form into another user's account: **Common Form → Copy to users**.
+
+- The copy is **deep and independent**: every field the target does not have yet is created in the target's name (same name, key and type), and a dropdown field brings its dropdown — matched by slug — together with any missing options. Automation rules are copied last, remapped to the target's own field ids, so the rule values keep matching the copied option values.
+- After the copy the two forms share no rows at all. Either side can edit, reorder or delete their own copy with no effect on the other.
+- A copy only runs against a user whose common form is **still empty** (no fields, no rules). Anyone who already built their own form is listed as `has N fields` and cannot be selected, so no user's work is ever overwritten. Repeated attempts are refused the same way at the API (`409 TARGET_FORM_NOT_EMPTY`).
+- A field key the target already owns is reused only when it is the same type on the same dropdown; otherwise that user's copy stops with `409 TARGET_FIELD_CONFLICT` and the other selected users are unaffected — each user is copied in their own transaction.
+- Once the fields are in place the target's own asset types get them attached and ordered, exactly as when the user saves their own common form.
+- Admins and deactivated users never appear in the list. Both endpoints (`GET /api/v1/common-form/copy-targets`, `POST /api/v1/common-form/copy`) are admin-only.
+
 ## Email notifications & SMTP
 
 Email delivery is opt-in and requires a SMTP server the admin configures once.

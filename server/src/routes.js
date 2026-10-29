@@ -34,6 +34,10 @@ router.put('/common-form', requirePermission('common_form.manage_own'), commonFo
 router.get('/common-form/automations', requirePermission('common_form.manage_own', 'automations.manage_own'), commonAutomation.list);
 router.post('/common-form/automations', requirePermission('automations.manage_own'), commonAutomation.create);
 router.delete('/common-form/automations/:id', requirePermission('automations.manage_own'), commonAutomation.remove);
+// Admin-only: copy this form (fields, dropdowns and automation rules) as an independent
+// copy into other users' accounts. Only users whose own common form is empty qualify.
+router.get('/common-form/copy-targets', requireAdmin, commonForm.copyTargets);
+router.post('/common-form/copy', requireAdmin, commonForm.copy);
 
 // Asset types
 router.get('/asset-types', requirePermission('asset_types.view_own'), type.list);

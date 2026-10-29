@@ -1,8 +1,9 @@
 import { useEffect, useState } from "react";
 import { api } from "../api/client";
-import { Button, Card, EmptyState, Alert } from "../components/ui";
+import { Button, Card, EmptyState, Alert, Modal } from "../components/ui";
 import { AutomationBuilder } from "../components/AutomationBuilder";
 import { useToast } from "../context/ToastContext";
+import { useAuth } from "../context/AuthContext";
 
 function FormFields({ fields, allFields, onChange, onSave }) {
   const [local, setLocal] = useState(fields);
@@ -140,7 +141,9 @@ export function CommonForm() {
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [copyOpen, setCopyOpen] = useState(false);
   const { showToast } = useToast();
+  const { isAdmin } = useAuth();
   async function load() {
     try {
       const [form, definitions] = await Promise.all([
@@ -181,12 +184,19 @@ export function CommonForm() {
     return <div className="text-sm text-slate-500">Loading common form...</div>;
   return (
     <div>
-      <div className="mb-6">
-        <h2 className="text-xl font-bold">Common Form</h2>
-        <p className="mt-1 text-sm text-slate-500">
-          Fields selected here become available automatically when creating an
-          asset of any type.
-        </p>
+      <div className="mb-6 flex items-start justify-between gap-3">
+        <div>
+          <h2 className="text-xl font-bold">Common Form</h2>
+          <p className="mt-1 text-sm text-slate-500">
+            Fields selected here become available automatically when creating an
+            asset of any type.
+          </p>
+        </div>
+        {isAdmin && (
+          <Button variant="secondary" className="shrink-0" onClick={() => setCopyOpen(true)}>
+            Copy to users
+          </Button>
+        )}
       </div>
       {error && (
         <div className="mb-4">
@@ -198,6 +208,136 @@ export function CommonForm() {
         <p className="mt-3 text-right text-xs text-slate-500">Saving...</p>
       )}
       <AutomationBuilder commonForm fields={fields} />
+      {isAdmin && (
+        <CopyToUsersModal open={copyOpen} onClose={() => setCopyOpen(false)} fieldCount={fields.length} />
+      )}
     </div>
+  );
+}
+
+function CopyToUsersModal({ open, onClose, fieldCount }) {
+  const [targets, setTargets] = useState([]);
+  const [ruleCount, setRuleCount] = useState(0);
+  const [loading, setLoading] = useState(true);
+  const [selected, setSelected] = useState([]);
+  const [busy, setBusy] = useState(false);
+  const [results, setResults] = useState(null);
+  const [error, setError] = useState("");
+  const { showToast } = useToast();
+
+  useEffect(() => {
+    if (!open) return;
+    setSelected([]);
+    setResults(null);
+    setError("");
+    setLoading(true);
+    Promise.all([api.commonForm.copyTargets(), api.commonForm.automations.list()])
+      .then(([targetRes, ruleRes]) => {
+        setTargets(targetRes.data);
+        setRuleCount(ruleRes.data.length);
+      })
+      .catch((e) => setError(e.message))
+      .finally(() => setLoading(false));
+  }, [open]);
+
+  function toggle(userId) {
+    setSelected((current) =>
+      current.includes(userId) ? current.filter((id) => id !== userId) : [...current, userId],
+    );
+  }
+
+  async function run() {
+    setBusy(true);
+    setError("");
+    try {
+      const response = await api.commonForm.copyTo(selected);
+      setResults(response.data.results);
+      const copied = response.data.results.filter((result) => result.ok).length;
+      showToast(copied ? `Copied to ${copied} ${copied === 1 ? "user" : "users"}.` : "Nothing was copied.");
+      const refreshed = await api.commonForm.copyTargets();
+      setTargets(refreshed.data);
+      setSelected([]);
+    } catch (e) {
+      setError(e.message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <Modal open={open} title="Copy this common form to users" onClose={onClose} className="max-w-lg">
+      <div className="space-y-4">
+        <p className="text-sm text-slate-500">
+          Puts an independent copy of your form — <strong>{fieldCount} {fieldCount === 1 ? "field" : "fields"}</strong>
+          {" "}and <strong>{ruleCount} automation {ruleCount === 1 ? "rule" : "rules"}</strong> — into their account.
+          Any field or dropdown they do not have yet is created in their name, so after the copy each of you edits
+          your own form and neither one changes the other. Only users whose common form is still empty can receive a
+          copy, so nothing of theirs is ever overwritten.
+        </p>
+        {error && <Alert>{error}</Alert>}
+        {loading ? (
+          <div className="py-6 text-center text-sm text-slate-500">Loading users…</div>
+        ) : targets.length === 0 ? (
+          <EmptyState
+            title="No user to copy to"
+            description="Every other account is an admin or is deactivated."
+          />
+        ) : (
+          <Card className="max-h-72 divide-y divide-slate-100 overflow-y-auto">
+            {targets.map((target) => (
+              <label
+                key={target.userId}
+                className={`flex items-center gap-3 px-4 py-3 text-sm ${target.ready ? "cursor-pointer hover:bg-slate-50" : "opacity-60"}`}
+              >
+                <input
+                  type="checkbox"
+                  disabled={!target.ready}
+                  checked={selected.includes(target.userId)}
+                  onChange={() => toggle(target.userId)}
+                />
+                <span className="min-w-0 flex-1">
+                  <span className="block truncate font-medium">{target.displayName || target.email}</span>
+                  {target.displayName && (
+                    <span className="block truncate text-xs text-slate-500">{target.email}</span>
+                  )}
+                </span>
+                {!target.ready && (
+                  <span className="shrink-0 text-xs text-slate-400">
+                    {`has ${target.fieldCount} ${target.fieldCount === 1 ? "field" : "fields"}`}
+                  </span>
+                )}
+              </label>
+            ))}
+          </Card>
+        )}
+        {results && (
+          <div className="space-y-1.5 rounded-xl bg-slate-50 px-4 py-3 text-sm">
+            {results.map((result) => (
+              <div key={result.userId} className="flex items-start gap-2">
+                <span className={result.ok ? "text-emerald-600" : "text-red-500"}>{result.ok ? "✓" : "✕"}</span>
+                <span className="min-w-0">
+                  <span className="font-medium">{result.displayName || result.email}</span>
+                  <span className="block text-xs text-slate-500">
+                    {result.ok
+                      ? `${result.fieldsCopied} fields, ${result.rulesCopied} rules copied (${result.fieldsCreated} new ${result.fieldsCreated === 1 ? "field" : "fields"}${result.dropdownsCreated ? `, ${result.dropdownsCreated} new ${result.dropdownsCreated === 1 ? "dropdown" : "dropdowns"}` : ""})${result.rulesSkipped ? `, ${result.rulesSkipped} rules skipped` : ""}`
+                      : result.reason}
+                  </span>
+                </span>
+              </div>
+            ))}
+          </div>
+        )}
+        <div className="flex justify-end gap-2">
+          <Button variant="secondary" onClick={onClose}>
+            {results ? "Done" : "Cancel"}
+          </Button>
+          <Button onClick={run} loading={busy} disabled={!selected.length}>
+            {selected.length
+              ? `Copy to ${selected.length} ${selected.length === 1 ? "user" : "users"}`
+              : "Select users to copy to"}
+          </Button>
+        </div>
+      </div>
+    </Modal>
   );
 }

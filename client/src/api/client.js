@@ -121,6 +121,8 @@ export const api = {
       create: (body) => request('/common-form/automations', { method: 'POST', body: JSON.stringify(body) }),
       remove: (id) => request(`/common-form/automations/${id}`, { method: 'DELETE' }),
     },
+    copyTargets: () => request('/common-form/copy-targets'),
+    copyTo: (userIds) => request('/common-form/copy', { method: 'POST', body: JSON.stringify({ userIds }) }),
   },
   fields: {
     list: () => request("/fields"),

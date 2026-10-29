@@ -60,7 +60,7 @@ export async function saveCommonForm(actor, fields) {
   });
 }
 
-async function syncCommonFieldOrder(actor, conn, formId) {
+export async function syncCommonFieldOrder(actor, conn, formId) {
   const [assetTypes] = await conn.execute('SELECT id FROM asset_types WHERE owner_user_id = ?', [actor.id]);
   const [commonFields] = await conn.execute(
     'SELECT field_definition_id, required, show_in_list, display_order FROM common_form_fields WHERE common_form_id = ? ORDER BY display_order, id',
