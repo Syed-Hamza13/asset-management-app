@@ -7,3 +7,10 @@ button, input, textarea, select { font: inherit; }
 
 @keyframes spin { to { transform: rotate(360deg); } }
 .spinner { width: 18px; height: 18px; border: 2px solid currentColor; border-right-color: transparent; border-radius: 999px; animation: spin .7s linear infinite; }
+
+/* Data-table rows: slate-50 is almost invisible on a white card, so the hovered
+   row gets a stronger tint plus a dark accent bar at its left edge. The accent
+   is an inset shadow on the cell because collapsed <tr> boxes never paint one. */
+.row-hover > tr > td { transition: background-color .12s ease, box-shadow .12s ease; }
+.row-hover > tr:hover > td { background-color: var(--color-slate-100); }
+.row-hover > tr:hover > td:first-child:not(:only-child) { box-shadow: inset 3px 0 0 0 var(--color-slate-900); }

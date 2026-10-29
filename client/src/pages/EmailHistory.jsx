@@ -90,7 +90,7 @@ export function EmailHistory() {
               <div key={r.id}>
                 <button
                   type="button"
-                  className="flex w-full items-start justify-between gap-3 px-4 py-3 text-left hover:bg-slate-50"
+                  className="flex w-full items-start justify-between gap-3 px-4 py-3 text-left transition-colors hover:bg-slate-100"
                   onClick={() => setExpanded(open ? null : r.id)}
                 >
                   <div className="min-w-0">

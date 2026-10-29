@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { useToast } from "../context/ToastContext";
+import { useAuth } from "../context/AuthContext";
 import { api } from "../api/client";
 import {
   Button,
@@ -23,7 +24,32 @@ const types = [
   ["dropdown", "Dropdown"],
 ];
 const typeLabel = (t) => types.find((x) => x[0] === t)?.[1] || t;
+
+function OwnerCell({ field, viewerId }) {
+  const name = (field.owner_display_name || "").trim() || field.owner_email || "Unknown";
+  const isSelf = Number(field.owner_user_id) === Number(viewerId);
+  const badge = isSelf ? "You" : field.owner_role === "admin" ? "Admin" : null;
+  return (
+    <div className="min-w-0">
+      <div className="flex items-center gap-1.5">
+        <span className="truncate font-medium text-slate-700" title={name}>
+          {name}
+        </span>
+        {badge && (
+          <span className="shrink-0 rounded-full bg-slate-100 px-2 py-0.5 text-[11px] font-semibold text-slate-600">
+            {badge}
+          </span>
+        )}
+      </div>
+      {field.owner_display_name && (
+        <div className="truncate text-xs text-slate-400">{field.owner_email}</div>
+      )}
+    </div>
+  );
+}
+
 export function Fields() {
+  const { user, isAdmin } = useAuth();
   const [items, setItems] = useState([]);
   const [dropdowns, setDropdowns] = useState([]);
   const [open, setOpen] = useState(false);
@@ -136,7 +162,9 @@ export function Fields() {
         <div>
           <h2 className="text-xl font-bold">Field Definitions</h2>
           <p className="mt-1 text-sm text-slate-500">
-            Reusable fields for your asset forms.
+            {isAdmin
+              ? "Reusable fields for your asset forms. Every user's fields are listed here — use the Owner column to tell identical names apart."
+              : "Reusable fields for your asset forms."}
           </p>
         </div>
         <Button
@@ -169,11 +197,12 @@ export function Fields() {
                   <th className="px-5 py-3">Name</th>
                   <th className="px-5 py-3">Key</th>
                   <th className="px-5 py-3">Type</th>
+                  {isAdmin && <th className="px-5 py-3">Owner</th>}
                   <th className="px-5 py-3">Source</th>
                   <th className="px-5 py-3"></th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-slate-100">
+              <tbody className="row-hover divide-y divide-slate-100">
                 {items.map((x) => (
                   <tr key={x.id}>
                     <td className="px-5 py-4 font-medium">{x.name}</td>
@@ -183,6 +212,11 @@ export function Fields() {
                     <td className="px-5 py-4">
                       {types.find((t) => t[0] === x.type)?.[1]}
                     </td>
+                    {isAdmin && (
+                      <td className="px-5 py-4 max-w-[220px]">
+                        <OwnerCell field={x} viewerId={user?.id} />
+                      </td>
+                    )}
                     <td className="px-5 py-4">{x.dropdown_name || "—"}</td>
                     <td className="px-5 py-4 text-right">
                       <Button variant="ghost" onClick={() => startEdit(x)}>
@@ -230,7 +264,7 @@ export function Fields() {
                         <th className="px-3 py-2">Why</th>
                       </tr>
                     </thead>
-                    <tbody className="divide-y divide-slate-100">
+                    <tbody className="row-hover divide-y divide-slate-100">
                       {migration.data.issues.map((it) => (
                         <tr key={it.publicId}>
                           <td className="px-3 py-2 font-medium">{it.label}</td>

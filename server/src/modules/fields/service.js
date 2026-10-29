@@ -6,9 +6,16 @@ import { ownerScope } from '../../utils/scope.js';
 
 export async function listFields(actor) {
   const scope = ownerScope(actor, 'f.owner_user_id');
-  const [rows] = await pool.execute(`SELECT f.id, f.name, f.\`key\` AS field_key, f.type, f.dropdown_id, f.is_active, d.name AS dropdown_name,
+  // The owner columns let an admin (who sees every user's fields) tell identical
+  // names apart; a non-admin only ever gets their own rows back.
+  const [rows] = await pool.execute(`SELECT f.id, f.name, f.\`key\` AS field_key, f.type, f.dropdown_id, f.is_active, f.owner_user_id,
+    u.email AS owner_email, u.display_name AS owner_display_name, u.role AS owner_role,
+    d.name AS dropdown_name,
     (SELECT COUNT(*) FROM asset_type_fields atf WHERE atf.field_definition_id = f.id) AS form_usage_count
-    FROM field_definitions f LEFT JOIN dropdowns d ON d.id = f.dropdown_id WHERE 1=1${scope.sql} ORDER BY f.name ASC`, scope.params);
+    FROM field_definitions f
+    LEFT JOIN dropdowns d ON d.id = f.dropdown_id
+    LEFT JOIN users u ON u.id = f.owner_user_id
+    WHERE 1=1${scope.sql} ORDER BY f.name ASC, COALESCE(NULLIF(u.display_name, ''), u.email) ASC`, scope.params);
   return rows.map(r => ({ ...r, field_key: r.field_key }));
 }
 

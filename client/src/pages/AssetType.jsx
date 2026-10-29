@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { api } from "../api/client";
 import {
@@ -7,6 +7,7 @@ import {
   DateInput,
   EmptyState,
   Input,
+  Popover,
   Select,
   Alert,
   Modal,
@@ -110,7 +111,7 @@ function FieldForm({ fields, onChange, onSave }) {
   );
 }
 
-function ColumnFilter({ field, values, selectedValues, onToggle, onClear }) {
+function ColumnFilter({ anchorRef, onClose, field, values, selectedValues, onToggle, onClear }) {
   const [search, setSearch] = useState("");
   const matchingValues = values.filter((value) =>
     value.toLowerCase().includes(search.toLowerCase()),
@@ -128,7 +129,7 @@ function ColumnFilter({ field, values, selectedValues, onToggle, onClear }) {
   }
 
   return (
-    <div className="absolute left-0 top-full z-20 mt-2 w-64 rounded-xl border border-slate-200 bg-white p-3 text-left normal-case shadow-xl">
+    <Popover anchorRef={anchorRef} onClose={onClose}>
       <input
         className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm font-normal normal-case outline-none focus:border-slate-400 focus:ring-4 focus:ring-slate-100"
         placeholder={`Search ${field.name}`}
@@ -174,7 +175,7 @@ function ColumnFilter({ field, values, selectedValues, onToggle, onClear }) {
           ))
         )}
       </div>
-    </div>
+    </Popover>
   );
 }
 
@@ -194,6 +195,7 @@ export function AssetType() {
   const [configureForm, setConfigureForm] = useState(false);
   const [configureAutomations, setConfigureAutomations] = useState(false);
   const [openFilter, setOpenFilter] = useState(null);
+  const filterAnchorRef = useRef(null);
   const [columnFilters, setColumnFilters] = useState({});
   const [selectedAssetIds, setSelectedAssetIds] = useState([]);
   const [bulkAction, setBulkAction] = useState("");
@@ -449,29 +451,34 @@ export function AssetType() {
   if (!type) return <div className="text-sm text-slate-500">Loading...</div>;
   return (
     <div>
-      <div className="mb-6 flex flex-wrap items-start justify-between gap-4">
-        <div>
-          <div className="mb-1 text-sm">
-            <Link to="/" className="text-slate-500 hover:text-slate-900">
-              Assets
-            </Link>{" "}
-            <span className="text-slate-300">/</span>
-          </div>
-          <h2 className="text-2xl font-bold">{type.name}</h2>
-          <p className="mt-1 text-sm text-slate-500">
-            {type.asset_count} asset{Number(type.asset_count) === 1 ? "" : "s"}{" "}
-            
-          </p>
+      <div className="mb-4 flex flex-wrap items-center justify-between gap-x-4 gap-y-2">
+        <div className="flex min-w-0 flex-wrap items-center gap-x-2">
+          <Link
+            to="/"
+            className="shrink-0 text-[11px] font-semibold uppercase tracking-wide text-slate-400 transition hover:text-slate-700"
+          >
+            Assets
+          </Link>
+          <span aria-hidden="true" className="shrink-0 text-[11px] text-slate-300">
+            /
+          </span>
+          <h2 className="break-words text-lg font-bold leading-tight">
+            {type.name}
+          </h2>
+          <span className="shrink-0 rounded-full bg-slate-100 px-2 py-0.5 text-[11px] font-semibold tabular-nums text-slate-600">
+            {type.asset_count} asset{Number(type.asset_count) === 1 ? "" : "s"}
+          </span>
         </div>
-        <div className="flex flex-wrap gap-2">
+        <div className="flex flex-wrap items-center justify-end gap-1.5">
           {can("assets.create_own") && (
             <Link to={`/asset-types/${id}/new`}>
-              <Button>+ Add Asset</Button>
+              <Button size="sm">+ Add Asset</Button>
             </Link>
           )}
 
           {canEditForm && (
             <Button
+              size="sm"
               variant="secondary"
               onClick={() => setConfigureForm(true)}
             >
@@ -481,6 +488,7 @@ export function AssetType() {
 
           {can("reports.export_own") && (
             <Button
+              size="sm"
               variant="secondary"
               onClick={exportAssets}
               disabled={!filteredItems.length}
@@ -491,15 +499,18 @@ export function AssetType() {
 
           {can("automations.manage_own") && (
             <Button
+              size="sm"
               variant="secondary"
               onClick={() => setConfigureAutomations(true)}
+              title="Configure Automations"
             >
-              Configure Automations
+              Automations
             </Button>
           )}
 
           {canEditForm && (
             <Button
+              size="sm"
               variant="secondary"
               onClick={() => {
                 setColumnForm(
@@ -510,24 +521,37 @@ export function AssetType() {
                 );
                 setCustomizeColumns(true);
               }}
+              title="Customize Columns"
             >
-              Customize Columns
+              Columns
             </Button>
           )}
 
           {isAdmin && (
-            <Button variant="secondary" onClick={openShareModal}>
+            <Button size="sm" variant="secondary" onClick={openShareModal}>
               Share
             </Button>
           )}
           {can("asset_types.edit_own") && (
-            <Button variant="secondary" onClick={() => setEditName(true)}>
+            <Button
+              size="sm"
+              variant="secondary"
+              onClick={() => setEditName(true)}
+            >
               Rename
             </Button>
           )}
           {can("asset_types.delete_own") && (
-            <Button variant="danger" onClick={() => { setDeleteConfirmed(false); setDeleteOpen(true); }}>
-              Delete Asset Type
+            <Button
+              size="sm"
+              variant="danger"
+              onClick={() => {
+                setDeleteConfirmed(false);
+                setDeleteOpen(true);
+              }}
+              title="Delete Asset Type"
+            >
+              Delete
             </Button>
           )}
         </div>
@@ -601,7 +625,7 @@ export function AssetType() {
                         {canBulk && <input type="checkbox" aria-label="Select visible assets" checked={allVisibleSelected} onChange={(event) => setSelectedAssetIds(event.target.checked ? [...new Set([...selectedAssetIds, ...filteredItems.map((asset) => asset.publicId)])] : selectedAssetIds.filter((publicId) => !filteredItems.some((asset) => asset.publicId === publicId)))} />}
                       </th>
                       {visibleFields.map((f) => (
-                        <th key={f.id} className="relative px-4 py-3">
+                        <th key={f.id} ref={openFilter === f.field_key ? filterAnchorRef : null} className="px-4 py-3">
                           <button
                             type="button"
                             className={`inline-flex items-center gap-2 text-left hover:text-slate-900 ${
@@ -622,6 +646,8 @@ export function AssetType() {
                           </button>
                           {openFilter === f.field_key && (
                             <ColumnFilter
+                              anchorRef={filterAnchorRef}
+                              onClose={() => setOpenFilter(null)}
                               field={f}
                               values={filterValues[f.field_key]}
                               selectedValues={columnFilters[f.field_key] || []}
@@ -647,9 +673,9 @@ export function AssetType() {
                       <th />
                     </tr>
                   </thead>
-                  <tbody className="divide-y divide-slate-100">
+                  <tbody className="row-hover divide-y divide-slate-100">
                     {filteredItems.map((a) => (
-                      <tr key={a.publicId} className="hover:bg-slate-50">
+                      <tr key={a.publicId}>
                         <td className="px-4 py-3">{canBulk && <input type="checkbox" aria-label={`Select asset ${a.publicId}`} checked={selectedAssetIds.includes(a.publicId)} onChange={(event) => toggleAssetSelection(a.publicId, event.target.checked)} />}</td>
                         {visibleFields.map((f) => (
                             <td
@@ -942,7 +968,7 @@ export function AssetType() {
               {shareUsers.map((u) => (
                 <label
                   key={u.id}
-                  className="flex cursor-pointer items-center gap-3 px-4 py-3 text-sm hover:bg-slate-50"
+                  className="flex cursor-pointer items-center gap-3 px-4 py-3 text-sm transition-colors hover:bg-slate-100"
                 >
                   <input
                     type="checkbox"

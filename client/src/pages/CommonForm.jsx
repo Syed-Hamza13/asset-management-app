@@ -287,7 +287,7 @@ function CopyToUsersModal({ open, onClose, fieldCount }) {
             {targets.map((target) => (
               <label
                 key={target.userId}
-                className={`flex items-center gap-3 px-4 py-3 text-sm ${target.ready ? "cursor-pointer hover:bg-slate-50" : "opacity-60"}`}
+                className={`flex items-center gap-3 px-4 py-3 text-sm transition-colors ${target.ready ? "cursor-pointer hover:bg-slate-100" : "opacity-60"}`}
               >
                 <input
                   type="checkbox"

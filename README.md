@@ -273,6 +273,7 @@ The app supports multiple accounts on top of the initial admin.
 
 - The account created during first-time setup is the **admin**. The admin can view and manage **every** record in the workspace and grants permissions to other users.
 - Ordinary users are **private by default**: they can only see and manage asset types, assets, fields, dropdowns, common form, automations, reports and email settings that **they** created. One user can never read another user's records; attempts to access someone else's record return `404` (not `403`) so record existence is not leaked.
+- Because the admin sees every account's records, the **Field Definitions** page has an **Owner** column — the owner's display name (falling back to their email) plus a `You` badge for the admin's own rows — so identically named fields created by different users, or brought in by a common-form copy, can be told apart at a glance. Ordinary users only ever receive their own rows, so the column is hidden for them.
 - The admin creates users from the **Users** page and assigns each a set of capabilities (for example `assets.create_own`, `reports.export_own`, `email.rules.manage_own`). New users default to an **Assets only** capability set and can be adjusted per user.
 - New users must change their temporary password on first login; until they do, they are routed to the Settings page.
 - Deactivating a user immediately invalidates their active sessions.
