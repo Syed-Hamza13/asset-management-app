@@ -13,6 +13,7 @@ import {
   Alert,
 } from "../components/ui";
 import { DynamicForm } from "../components/DynamicForm";
+import { AssetTypeIcon } from "../components/AssetTypeIcon";
 import { NotificationBanner } from "../components/NotificationBanner";
 
 export function Dashboard() {
@@ -245,25 +246,21 @@ export function Dashboard() {
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
           {visibleTypes.map((t) => (
             <Card key={t.id} className="p-5 transition hover:-translate-y-0.5 hover:shadow-md">
-              <Link to={`/asset-types/${t.id}`} className="block">
-                <div className="flex items-start justify-between">
-                  <div>
-                    <h3 className="font-semibold">
-                      {t.name}{" "}
-                      {!isAdmin && t.is_owner === false && (
-                        <span className="ml-1 rounded-full bg-sky-100 px-2 py-0.5 align-middle text-xs font-semibold text-sky-700">
-                          Shared
-                        </span>
-                      )}
-                    </h3>
-                    <p className="mt-1 text-sm text-slate-500">
-                      {t.asset_count} asset
-                      {Number(t.asset_count) === 1 ? "" : "s"}
-                    </p>
-                  </div>
-                  <span className="grid h-9 w-9 place-items-center rounded-xl bg-slate-100 text-slate-600">
-                    →
-                  </span>
+              <Link to={`/asset-types/${t.id}`} className="flex items-center gap-3">
+                <AssetTypeIcon name={t.name} />
+                <div className="min-w-0">
+                  <h3 className="font-semibold">
+                    {t.name}{" "}
+                    {!isAdmin && t.is_owner === false && (
+                      <span className="ml-1 rounded-full bg-sky-100 px-2 py-0.5 align-middle text-xs font-semibold text-sky-700">
+                        Shared
+                      </span>
+                    )}
+                  </h3>
+                  <p className="mt-1 text-sm text-slate-500">
+                    {t.asset_count} asset
+                    {Number(t.asset_count) === 1 ? "" : "s"}
+                  </p>
                 </div>
               </Link>
             </Card>

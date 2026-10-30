@@ -97,3 +97,29 @@ test('applyAutomationRules uses previousValues only for changed', () => {
   assert.equal(applyAutomationRules(rules, { user: 'Hamza', status: '' }, { user: 'Hamza' }).status, '');
   assert.equal(applyAutomationRules(rules, { user: 'Hamza', status: '' }, {}).status, 'Issued');
 });
+
+test('a clear rule cannot blank an auto_date that already holds a date', () => {
+  const clearDate = rule({
+    conditionType: 'empty',
+    targetKey: 'date_of_issue',
+    targetType: 'auto_date',
+    actionType: 'clear',
+    actionValue: null,
+  });
+  assert.equal(applyAutomationRules([clearDate], { user: '', date_of_issue: '2026-10-31' }).date_of_issue, '2026-10-31');
+  // Nothing to protect when the field is already blank.
+  assert.equal(applyAutomationRules([clearDate], { user: '', date_of_issue: '' }).date_of_issue, '');
+  // A whitespace-only date is treated as blank, so the rule still applies.
+  assert.equal(applyAutomationRules([clearDate], { user: '', date_of_issue: '  ' }).date_of_issue, '');
+});
+
+test('a clear rule still blanks other field types and set_today still fills auto_date', () => {
+  assert.equal(
+    applyAutomationRules([rule({ conditionType: 'empty', targetKey: 'remark', targetType: 'multiline', actionType: 'clear' })], { user: '', remark: 'note' }).remark,
+    '',
+  );
+  assert.equal(
+    applyAutomationRules([rule({ conditionType: 'empty', targetKey: 'date_of_issue', targetType: 'auto_date', actionType: 'set_today', actionValue: null })], { user: '', date_of_issue: '2020-01-01' }).date_of_issue,
+    automationToday(),
+  );
+});

@@ -4,18 +4,16 @@ import { AppError } from "../../utils/errors.js";
 import { assertIntegerId, validateFieldValue } from "../../utils/validation.js";
 import { accessibleTypesSql, assetAccessSql } from "../../utils/scope.js";
 import { applyAutomations, getEffectiveAutomations } from "./automation.js";
-import { indiaToday } from "../../utils/dateTime.js";
 import { attachCommonFields } from "../commonForms/service.js";
 import { applyCommonAutomations } from "../commonForms/automationService.js";
 import { enqueueForCreate, enqueueForUpdate } from "../email/enqueue.js";
 
 // Resolve the actor whose common form, automations and email rules should drive a
-// write on `assetTypeId`. Normally this is the acting user; when someone adds to a
-// type owned by another user (shared with them by an admin) the type's own
-// structure, common fields and rules belong to the owner, so we substitute a
-// lightweight owner actor. Admins keep acting as themselves (already global scope).
+// write on `assetTypeId`. The type's own structure, common fields and rules belong
+// to its owner, so anyone adding to a type owned by somebody else — including a
+// super admin — runs as that owner. Injecting the acting admin's common form here
+// is what used to duplicate the shared type's fields.
 async function resolveActorForType(actor, assetTypeId) {
-  if (actor.isAdmin) return actor;
   const [rows] = await pool.execute(
     `SELECT at.owner_user_id, u.email AS owner_email
      FROM asset_types at JOIN users u ON u.id = at.owner_user_id
@@ -200,16 +198,6 @@ export async function createAsset(actor, assetTypeId, values) {
   if (!Number.isInteger(quantity) || quantity < 1 || quantity > 15)
     throw new AppError(400, "INVALID_QUANTITY", "Quantity must be a whole number between 1 and 15.");
   if (quantityField) prepared[quantityField.key] = quantity;
-  for (const field of fields) {
-    if (
-      field.type === "auto_date" &&
-      (prepared[field.key] === undefined ||
-        prepared[field.key] === null ||
-        prepared[field.key] === "")
-    ) {
-      prepared[field.key] = indiaToday();
-    }
-  }
   const automated = await applyAutomations(ownerActor, id, await applyCommonAutomations(ownerActor, prepared));
   const validated = await validateValues(actor, id, automated);
   if (quantityField) delete validated[quantityField.key];

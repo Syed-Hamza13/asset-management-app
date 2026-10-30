@@ -4,6 +4,8 @@ import { todayInputValue } from '../utils';
 import {
   actionValue,
   conditionMatches,
+  isBlockedAutoDateClear,
+  isFilledValue,
 } from '../../../shared/automationRules.js';
 
 export function DynamicForm({
@@ -20,30 +22,14 @@ export function DynamicForm({
   const manualRef = useRef(new Set());
   const applyingRef = useRef(false);
   const lastValuesRef = useRef(values);
+  const seededRef = useRef(false);
 
-  // auto_date defaults to today only when an asset is being created for the
-  // first time. On edit we must preserve whatever the user saved (including a
-  // deliberately blank value), so this effect is a no-op unless isNew.
-  useEffect(() => {
-    if (!isNew) return;
-    setValues((current) => {
-      const next = { ...current };
-      let changed = false;
-      for (const field of fields) {
-        if (
-          field.type === "auto_date" &&
-          (current[field.key] === undefined ||
-            current[field.key] === null ||
-            current[field.key] === "")
-        ) {
-          next[field.key] = todayInputValue();
-          changed = true;
-        }
-      }
-      return changed ? next : current;
-    });
-  }, [fields, setValues, isNew]);
-
+  // One pass: seed the auto_date defaults for a create form, then run the
+  // owner's automation rules over the seeded values. Seeding has to happen in
+  // the same pass as the rules — the rules used to evaluate the pre-seed
+  // snapshot and wrote a "" back over the date that had just been queued.
+  // Seeding runs once per mounted form, so a date the user clears by hand stays
+  // cleared, and on edit (isNew false) the saved value is never touched.
   useEffect(() => {
     if (applyingRef.current) {
       applyingRef.current = false;
@@ -52,7 +38,16 @@ export function DynamicForm({
     }
     const previous = lastValuesRef.current;
     lastValuesRef.current = values;
-    if (!automations.length) return;
+
+    const next = { ...values };
+    if (isNew && fields.length && !seededRef.current) {
+      seededRef.current = true;
+      for (const field of fields) {
+        if (field.type === "auto_date" && !isFilledValue(next[field.key]))
+          next[field.key] = todayInputValue();
+      }
+    }
+
     const changedKeys = new Set(
       Object.keys(values).filter((key) => values[key] !== previous[key]),
     );
@@ -62,7 +57,6 @@ export function DynamicForm({
         automatedRef.current.delete(key);
       }
     }
-    const next = { ...values };
     for (const rule of automations) {
       if (manualRef.current.has(rule.targetKey)) {
         if (!changedKeys.has(rule.sourceKey)) continue;
@@ -76,15 +70,25 @@ export function DynamicForm({
         )
       )
         continue;
+      if (isBlockedAutoDateClear(rule, next[rule.targetKey])) continue;
       next[rule.targetKey] = actionValue(rule);
       automatedRef.current.add(rule.targetKey);
     }
-    const changed = Object.keys(next).some((key) => next[key] !== values[key]);
+    // Write only the keys this pass changed. Replacing the whole object here
+    // would drop any update queued in the same commit.
+    const patch = {};
+    let changed = false;
+    for (const [key, value] of Object.entries(next)) {
+      if (values[key] !== value) {
+        patch[key] = value;
+        changed = true;
+      }
+    }
     if (changed) {
       applyingRef.current = true;
-      setValues(next);
+      setValues((current) => ({ ...current, ...patch }));
     }
-  }, [values, automations, previousValues, setValues]);
+  }, [values, automations, previousValues, setValues, fields, isNew]);
 
   return (
     <div className="grid gap-4 md:grid-cols-2">

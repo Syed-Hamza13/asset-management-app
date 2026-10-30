@@ -10,12 +10,13 @@ export function automationToday() {
   }).format(new Date());
 }
 
-export function conditionMatches(rule, sourceValue, previousValue) {
+export function isFilledValue(value) {
   // Whitespace-only values count as empty (a lone space is not "filled").
-  const filled =
-    sourceValue !== undefined &&
-    sourceValue !== null &&
-    String(sourceValue).trim() !== '';
+  return value !== undefined && value !== null && String(value).trim() !== '';
+}
+
+export function conditionMatches(rule, sourceValue, previousValue) {
+  const filled = isFilledValue(sourceValue);
   if (rule.conditionType === 'filled') return filled;
   if (rule.conditionType === 'empty') return !filled;
   if (rule.conditionType === 'changed')
@@ -24,6 +25,20 @@ export function conditionMatches(rule, sourceValue, previousValue) {
     return String(sourceValue ?? '') === String(rule.conditionValue ?? '');
   return false;
 }
+
+// A rule may not blank an auto_date field that already holds a date. auto_date
+// means "today when the create form opens, then whatever the user left there",
+// so only the user clears it. Without this guard a "… -> clear" rule wipes the
+// prefill in the form and the submitted date on create, for every owner who has
+// such a rule in their common form.
+export function isBlockedAutoDateClear(rule, currentValue) {
+  return (
+    rule.actionType === 'clear' &&
+    rule.targetType === 'auto_date' &&
+    isFilledValue(currentValue)
+  );
+}
+
 
 export function actionValue(rule) {
   if (rule.actionType === 'clear') return '';
@@ -42,6 +57,7 @@ export function applyAutomationRules(rules, values, previousValues = {}) {
   for (const rule of rules) {
     if (!conditionMatches(rule, result[rule.sourceKey], previousValues[rule.sourceKey]))
       continue;
+    if (isBlockedAutoDateClear(rule, result[rule.targetKey])) continue;
     result[rule.targetKey] = actionValue(rule);
   }
   return result;
