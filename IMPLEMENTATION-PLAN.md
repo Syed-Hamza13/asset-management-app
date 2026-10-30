@@ -89,7 +89,7 @@ All routes below are mounted under `/api/v1` and protected by `requireAuth` only
 - `GET /health` (public)
 - `GET /api/v1/setup/status`, `POST /api/v1/setup` (public, one-time)
 - `POST /api/v1/auth/login`, `POST /api/v1/auth/logout`, `GET /api/v1/auth/me`, `GET /api/v1/auth/csrf`, `POST /api/v1/auth/change-password`
-- `GET|PUT /api/v1/branding`
+- `GET|PUT /api/v1/branding` (auth), `GET /api/v1/branding/icon` and `GET /manifest.webmanifest` (public: raw favicon bytes plus a generated web app manifest, so the tab and install/home-screen icons are correct on the sign-in screen too)
 - `GET|PUT /api/v1/common-form`
 - `GET|POST /api/v1/common-form/automations`, `DELETE /api/v1/common-form/automations/:id`
 - `GET|POST /api/v1/asset-types`, `GET|PATCH|DELETE /api/v1/asset-types/:id`
@@ -121,7 +121,8 @@ Routes are declared in [App.jsx](./client/src/App.jsx). Navigation is in [Layout
 - `/fields` → [Fields.jsx](./client/src/pages/Fields.jsx).
 - `/dropdowns` → [Dropdowns.jsx](./client/src/pages/Dropdowns.jsx).
 - `/settings` → [Settings.jsx](./client/src/pages/Settings.jsx): branding + change password only.
-- `/login`, `/setup` → public.
+- `/` (public) → [Login.jsx](./client/src/pages/Login.jsx): sign-in card + Quick Entry form, shown in place when signed out. There is no `/login` route.
+- `/setup` → public.
 
 Shared components: [DynamicForm.jsx](./client/src/components/DynamicForm.jsx), [AutomationBuilder.jsx](./client/src/components/AutomationBuilder.jsx), [ui.jsx](./client/src/components/ui.jsx), [Turnstile.jsx](./client/src/components/Turnstile.jsx). Contexts: [AuthContext.jsx](./client/src/context/AuthContext.jsx), [ToastContext.jsx](./client/src/context/ToastContext.jsx).
 

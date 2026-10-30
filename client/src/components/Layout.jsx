@@ -25,16 +25,12 @@ export function Layout() {
   const title = location.pathname.startsWith("/asset-types/")
     ? "Asset Type"
     : nav.find((n) => location.pathname === n[0])?.[1] || "Asset Manager";
-  const [branding, setBranding] = useState({ favicon: "", appIcon: "" });
+  // The tab favicon is served by GET /api/v1/branding/icon (linked from index.html), so it
+  // is already correct on the sign-in screen; only the sidebar icon needs the authed read.
+  const [appIcon, setAppIcon] = useState("");
   useEffect(() => {
-    api.branding.get().then((response) => setBranding(response.data)).catch(() => {});
+    api.branding.get().then((response) => setAppIcon(response.data.appIcon)).catch(() => {});
   }, []);
-  useEffect(() => {
-    if (!branding.favicon) return;
-    let link = document.querySelector('link[rel="icon"]');
-    if (!link) { link = document.createElement("link"); link.rel = "icon"; document.head.appendChild(link); }
-    link.href = branding.favicon;
-  }, [branding.favicon]);
   return (
     <ToastProvider>
     <NotificationsProvider>
@@ -42,7 +38,7 @@ export function Layout() {
       <aside className="fixed inset-y-0 left-0 hidden w-64 border-r border-slate-200 bg-white lg:block">
         <div className="flex h-16 items-center justify-between gap-2 px-6 text-lg font-bold">
           <span className="flex min-w-0 items-center gap-2 truncate">
-            {branding.appIcon && <img src={branding.appIcon} alt="" className="h-8 w-8 rounded-lg object-cover" />}
+            {appIcon && <img src={appIcon} alt="" className="h-8 w-8 rounded-lg object-cover" />}
             Asset Manager
           </span>
           <NotificationBell align="left" />
@@ -74,7 +70,7 @@ export function Layout() {
       <div className="lg:pl-64">
         <header className="sticky top-0 z-20 border-b border-slate-200 bg-white/95 backdrop-blur lg:hidden">
           <div className="flex items-center justify-between gap-3 px-4 py-3">
-            <div className="flex min-w-0 items-center gap-2 truncate text-base font-bold">{branding.appIcon && <img src={branding.appIcon} alt="" className="h-7 w-7 rounded-md object-cover" />}{title}</div>
+            <div className="flex min-w-0 items-center gap-2 truncate text-base font-bold">{appIcon && <img src={appIcon} alt="" className="h-7 w-7 rounded-md object-cover" />}{title}</div>
             <div className="flex shrink-0 items-center gap-3">
               <NotificationBell align="right" />
               <button onClick={logout} className="text-sm font-semibold text-slate-600">

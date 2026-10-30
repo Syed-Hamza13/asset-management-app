@@ -464,12 +464,18 @@ export function Settings() {
 
   async function submitPassword(event) {
     event.preventDefault(); setError(""); setLoading(true);
-    try { await api.changePassword(form); setForm({ currentPassword: "", newPassword: "", confirmPassword: "" }); showToast("Password changed successfully."); setTimeout(() => window.location.assign("/login"), 400); }
+    try { await api.changePassword(form); setForm({ currentPassword: "", newPassword: "", confirmPassword: "" }); showToast("Password changed successfully."); setTimeout(() => window.location.assign("/"), 400); }
     catch (e) { setError(e.message); } finally { setLoading(false); }
   }
   async function saveBranding(event) {
     event.preventDefault(); setBrandingError(""); setBrandingLoading(true);
-    try { if (branding.favicon) await api.branding.update("favicon_data_url", branding.favicon); if (branding.appIcon) await api.branding.update("app_icon_data_url", branding.appIcon); showToast("Branding saved successfully."); }
+    try {
+      if (branding.favicon) await api.branding.update("favicon_data_url", branding.favicon);
+      if (branding.appIcon) await api.branding.update("app_icon_data_url", branding.appIcon);
+      showToast("Branding saved successfully.");
+      const iconLink = document.querySelector('link[rel="icon"]');
+      if (iconLink) iconLink.href = `/api/v1/branding/icon?t=${Date.now()}`;
+    }
     catch (e) { setBrandingError(e.message); } finally { setBrandingLoading(false); }
   }
 
