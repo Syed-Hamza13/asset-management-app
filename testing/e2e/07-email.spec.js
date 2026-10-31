@@ -225,6 +225,7 @@ test.describe('email notifications', () => {
     await tabButton(page, 'Rules').click();
     await page.getByRole('button', { name: '+ New Rule', exact: true }).click();
     const dialog = modal(page, 'New Rule');
+    await expect(dialog).toBeVisible();
 
     const typeLabels = await dialog
       .locator('div.grid.max-h-40 label span.truncate')
@@ -369,7 +370,13 @@ test.describe('email history', () => {
     page.on('request', (req) => {
       if (req.method() === 'GET' && req.url().includes('/email/history')) requested.push(req.url());
     });
+    // The two scopes can return the same rows, so the rendered list alone cannot
+    // prove the switch worked - wait for the request the switch is supposed to make.
+    const allHistoryRequest = page.waitForRequest(
+      (req) => req.method() === 'GET' && req.url().includes('/email/history/all?limit=200'),
+    );
     await page.getByLabel('All users', { exact: true }).check();
+    await allHistoryRequest;
     await expect(page.getByLabel('All users', { exact: true })).toBeChecked();
     await expect(list).toHaveCount(all.length);
     expect(requested, 'toggling All users re-queries the history').toContain(

@@ -1,5 +1,6 @@
 # Playwright run output and the stored admin session must never be committed.
 .auth/
 .artifacts/
+report/
 test-results/
 playwright-report/

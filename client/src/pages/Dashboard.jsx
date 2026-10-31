@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { Link } from "react-router-dom";
 import { api } from "../api/client";
 import { useToast } from "../context/ToastContext";
 import { useAuth } from "../context/AuthContext";
@@ -17,7 +17,6 @@ import { NotificationBanner } from "../components/NotificationBanner";
 import { AddAssetModal } from "./dashboard/AddAssetModal";
 
 export function Dashboard() {
-  const navigate = useNavigate();
   const [types, setTypes] = useState([]);
   const [open, setOpen] = useState(false);
   const [typeModalOpen, setTypeModalOpen] = useState(false);
@@ -75,9 +74,8 @@ export function Dashboard() {
     );
   }
 
-  function goToCreatedAsset(asset) {
+  function assetCreated() {
     setOpen(false);
-    navigate(`/assets/${asset.publicId}`);
     load();
   }
 
@@ -181,7 +179,7 @@ export function Dashboard() {
           error={error}
           onError={setError}
           onTypeCreated={addTypeToList}
-          onCreated={goToCreatedAsset}
+          onCreated={assetCreated}
           onClose={() => setOpen(false)}
         />
       )}

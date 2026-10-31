@@ -1,8 +1,15 @@
 import { test, expect } from '@playwright/test';
-import { apiGet, controlLabels, modal } from '../helpers/app.js';
+import {
+  apiGet,
+  controlLabels,
+  fieldIn,
+  modal,
+  watchWrites,
+} from '../helpers/app.js';
 
-// Read-only by design: the suite opens every create/edit surface but never
-// submits, so the live production database is not touched.
+// Read-only by design: the suite opens every create/edit surface but never lets a
+// submit reach the live production database. The one exception below answers the
+// request inside the browser, so the server still sees nothing but GETs.
 test.describe('dashboard', () => {
   test('asset type cards match the API, names and counts', async ({ page, request }) => {
     const types = await apiGet(request, '/asset-types');
@@ -84,6 +91,54 @@ test.describe('dashboard', () => {
       await expect(dialog).toHaveCount(0);
     }
     expect(writes, `cancelling must not send a write: ${writes.join(', ')}`).toEqual([]);
+  });
+
+  test('saving an asset keeps the user on the dashboard instead of opening the new asset', async ({
+    page,
+    request,
+  }) => {
+    const types = await apiGet(request, '/asset-types');
+    const type = types[0];
+    const form = await apiGet(request, `/asset-types/${type.id}/assets/form`);
+    const nameField = form.fields.find((field) => field.required);
+    expect(nameField, `${type.name} has no required field to fill`).toBeTruthy();
+
+    // The create is answered in the browser, so the live database stays untouched -
+    // what this locks is where the app takes the user after a successful save.
+    let intercepted = 0;
+    await page.route(/\/api\/v1\/asset-types\/\d+\/assets$/, (route) => {
+      intercepted += 1;
+      route.fulfill({
+        status: 201,
+        contentType: 'application/json',
+        body: JSON.stringify({ success: true, data: { publicId: 'never-written' } }),
+      });
+    });
+    const writes = watchWrites(page);
+    const before = await apiGet(request, `/asset-types/${type.id}/assets?page=1`);
+
+    await page.goto('/');
+    const origin = await page.evaluate(() => location.origin);
+    await page.getByRole('button', { name: '+ Add Asset', exact: true }).click();
+    const dialog = modal(page, 'Add Asset');
+    await expect(dialog).toBeVisible();
+    await dialog.getByLabel('Asset Type').fill(type.name);
+    await dialog.getByRole('button', { name: type.name, exact: true }).click();
+
+    const nameInput = await fieldIn(dialog, nameField.name);
+    await nameInput.fill('Behaviour lock - never saved');
+    await dialog.getByRole('button', { name: `Save ${type.name}` }).click();
+
+    await expect(page.getByRole('status')).toHaveText('Asset added successfully.');
+    await expect(dialog).toHaveCount(0);
+    await expect(page).toHaveURL(`${origin}/`);
+    await expect(page.getByRole('heading', { name: 'Assets', exact: true })).toBeVisible();
+
+    expect(intercepted, 'the app must send exactly one create').toBe(1);
+    const stray = writes.filter((w) => w !== `POST /api/v1/asset-types/${type.id}/assets`);
+    expect(stray, `saving must not touch anything else: ${stray.join(', ')}`).toEqual([]);
+    const after = await apiGet(request, `/asset-types/${type.id}/assets?page=1`);
+    expect(after.total, 'the intercepted create must not reach the database').toBe(before.total);
   });
 
   test('the Add Asset Type modal opens and cancels without creating a type', async ({ page, request }) => {

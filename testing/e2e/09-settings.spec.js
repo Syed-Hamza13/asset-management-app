@@ -33,10 +33,9 @@ test.describe('settings', () => {
     await expect(page.getByRole('heading', { name: 'Settings & Security', exact: true })).toBeVisible();
     await expect(page.getByText('Manage your account and application branding.')).toBeVisible();
 
-    const titles = await page
-      .locator('main h3')
-      .evaluateAll((els) => els.map((el) => el.textContent.trim()));
-    expect(titles).toEqual(CARD_TITLES);
+    // Each card keeps its <h3> while it loads (only the SMTP card shortens its
+    // title to "SMTP" until the settings arrive), so retry until they all settle.
+    await expect(page.locator('main h3')).toHaveText(CARD_TITLES);
     expect(writes, `opening Settings must not write: ${writes.join(', ')}`).toEqual([]);
   });
 

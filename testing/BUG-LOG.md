@@ -218,3 +218,143 @@ lines, which is the same markup that was previously written one-section-per-line
 Housekeeping: added `testing/.gitignore` so `.auth/` (stored admin session), `.artifacts/`,
 `test-results/` and `playwright-report/` are never committed, and removed a stray
 `client/test-results/` left by one mis-cwd Playwright invocation.
+
+---
+
+# Flake log — user run 2026-10-31 10:47 (headed, 71 passed / 2 failed, 3.2m)
+
+Both failures are the suite reading too early, not the app behaving differently. No product code
+was changed for either fix.
+
+## #10 `05-fields` "the table columns match the API rows, in order" — FAILED with `[]` (fixed)
+
+The test waited for the page heading only, then took a **single** `evaluateAll()` snapshot of
+`main table thead th`. `/fields` renders the table only after its own `GET /api/v1/fields`
+returns, so on a slower (headed) machine the snapshot lands on the pre-render DOM and returns an
+empty list. The DOM snapshot saved with the failure proves it: `.artifacts/e2e-05-fields-…/error-context.md`
+shows the table fully rendered with the 6 expected `columnheader` entries — right there, one
+moment later.
+
+Fix: replaced the one-shot read with Playwright's retrying `toHaveText([...])`, which waits for
+the 6 header cells and compares the same exact strings.
+
+## #11 `07-email` "All users switches the query to every owner" — FAILED with `requested = []` (fixed)
+
+Trace evidence (`0-trace.trace` = test's own API calls, `2-trace.trace`/`2-trace.network` = page):
+
+```
+62418.479  Frame.check          internal:label="All users"
+62583.117  Frame.expect         checkbox is checked
+62594.526  Frame.expect         list count == all.length      ← passes immediately
+62603.884  Frame.evaluate       () => location.origin
+62638.748  page GET /api/v1/email/history/all?limit=200 → 200  ← 44 ms AFTER the assertion
+```
+
+The app did exactly what it should: the toggle re-queried `/email/history/all`. But the test
+asserted on a `page.on('request')` array before that request had been issued, and its other
+signal — the row count — cannot distinguish the two scopes: `/email/history?limit=200` and
+`/email/history/all?limit=200` both came back with ETag `W/"17b3-ywYKP7C9FnNVwkY+xj53mRz+4GU"`,
+i.e. the admin's own rows are currently every owner's rows, so `mine.length === all.length`.
+
+Fix: the test now awaits `page.waitForRequest(... /email/history/all?limit=200)` before clicking
+on, so the switch is proven by the request it must make instead of by a list that looks identical.
+
+## #12 Same latent race in `09-settings` "the admin sees every card, in the documented order" (fixed pre-emptively)
+
+It read `main h3` with one `evaluateAll()` after two static-text waits. While the SMTP card is
+still loading it renders `<h3>SMTP</h3>` instead of `<h3>SMTP (email delivery)</h3>`, so the same
+class of race could fail that test on a slow run even though it passed on 2026-10-31. Now uses
+retrying `toHaveText(CARD_TITLES)`.
+
+Audit of the other one-shot `evaluateAll()` reads: `04-common-form`, `06-dropdowns`, `08-users`,
+`10-reports` and `11-quick-entry` all take their snapshot **after** a retrying assertion that
+guarantees the rows/summary rendered (`toHaveCount`/`toBeVisible` on data-driven text), which is
+the pattern `10-reports:65` documents. Left as they are.
+
+Note: failure traces and DOM snapshots contain the live `sid` session cookie. They stay on this
+machine only, and `testing/.gitignore` now excludes `.artifacts/`, `report/` and `.auth/`.
+
+## #13 Headed confirmation run after the flake fixes — 5 click-dispatch timeouts, no behaviour bug
+
+My own full **headed** Firefox run right after fixes #10-#12 (1 worker, no parallelism):
+**68 passed / 5 failed, 4.8 m** — versus the usual 2.2-2.4 m, so the machine was clearly loaded.
+
+| Test | Step that timed out |
+| --- | --- |
+| `04-common-form` "the Copy to users modal loads its targets and closes without copying" | `Close` in the modal |
+| `05-fields` "the create-field modal offers every type and closes without writing" | `Close` in the modal |
+| `05-fields` "the edit-field modal is prefilled from its row and closes without writing" | `Close` in the modal |
+| `06-dropdowns` "selecting a dropdown shows exactly its stored options" | the `Status` row button |
+| `07-email` "the new-template editor offers the placeholders and inserts them into the body" | a placeholder chip (`button.bg-indigo-50`) |
+
+All five failed identically: Playwright logged *element is visible, enabled, and stable /
+performing click action* and then `TimeoutError: locator.click: Timeout 12000ms exceeded`.
+That is the click never being delivered, not a wrong element and not a broken page - and none of
+these four pages (`CommonForm.jsx`, `Fields.jsx`, `Dropdowns.jsx`, `EmailNotifications.jsx`) were
+touched by the refactor at all.
+
+Confirmation, not guesswork: re-ran exactly those four spec files **headless** on the same build
+and same data - **24 passed (41.1 s)**. The product code and the tests are fine; the headed run
+lost its clicks to the environment (occluded/minimised window or CPU contention).
+
+No app or test change. Guidance for future headed runs: keep the Firefox window visible and
+un-minimised and the machine otherwise idle; gate merges on the headless `npm run test:e2e` run
+and use `--headed` for the human check. If headed click timeouts keep recurring, raise
+`actionTimeout` in `playwright.config.js` above 12 s - do not "fix" it by weakening an assertion.
+
+## #14 `07-email` "the rule editor builds its pickers from the API and cancels without writing" — third occurrence of the pre-render race (fixed)
+
+Full headless run after #10-#13: **72 passed / 1 failed (3.2 m)**. The failure was
+
+```
+- Expected 20 lines: "Bag Pack", "Bluetooth Earbuds", … (all 18 asset-type names)
++ Received  1 line : Array []
+```
+
+Root cause, from that run's own `error-context.md`: the page snapshot taken at the failure
+**shows the New Rule dialog fully rendered with all 18 checkboxes**, so the app was correct and
+the read was early again. `modal(page, title)` in `helpers/app.js` is a *locator factory* - it
+returns immediately and waits for nothing - and the very next statement was a one-shot
+`evaluateAll()`. If React has not committed the modal yet the locator matches 0 elements and
+`evaluateAll()` resolves to `[]` at once instead of retrying. That is the same defect as #10 and
+#12, arriving through a different door: a modal opened by a click rather than by `goto()`.
+
+Audit of all 23 `modal(page, …)` call sites in the suite: 21 of them already start with a
+retrying or auto-waiting action (`expect(dialog).toBeVisible()`, `expectLabels`, `expectValues`,
+`fieldIn`, or a Playwright action like `uncheck()` that waits by itself). Two did not:
+
+- `07-email.spec.js:227` - the one that failed → added `await expect(dialog).toBeVisible();`
+- `08-users.spec.js:67` - `const labels = await controlLabels(dialog)` right after opening Add
+  User, the identical latent race → same one-line guard added pre-emptively.
+
+Fix is test-side only, and it is the convention the rest of the suite already follows rather than
+a new mechanism: the modal's existence is asserted before anything is read out of it. The
+assertion itself is unchanged - still the same 18 names in the API's order, so the behaviour it
+locks is exactly what it locked before.
+
+Re-ran `07-email` + `08-users`: **15 passed (25.1 s)**.
+
+Clean baseline after the guard, same build and same data:
+**unit 21 passed / 0 failed (253 ms)** and **e2e 73 passed / 0 failed (3.0 m, headless Firefox)**.
+
+---
+
+# Behaviour change 2026-10-31 (requested) - saving from the dashboard's Add Asset modal no longer opens the new asset
+
+Requested change, not a bug: after "Save <type>" the app used to jump to `/assets/<publicId>`
+(`Dashboard.jsx` `goToCreatedAsset`). It now closes the modal, refreshes the type grid and stays on
+the dashboard; the "Asset added successfully." toast is unchanged. One handler serves every asset
+type, so all 18 types changed together. `useNavigate` was dropped from `Dashboard.jsx` - it had no
+other use. The asset-type page's own "+ Add Asset" (`/asset-types/:id/new`) and the in-row edit
+overlay already returned to a list, so they were left as they are.
+
+Locked by a new test: `02-dashboard` "saving an asset keeps the user on the dashboard instead of
+opening the new asset". It is the suite's first submit, and it stays write-free by answering
+`POST /api/v1/asset-types/<id>/assets` inside the browser with `page.route()`; it then asserts the
+server saw exactly that one write and that the type's asset `total` is unchanged before and after.
+
+Proof the test actually locks the behaviour: `Dashboard.jsx` was temporarily restored to the old
+redirect and rebuilt - the test failed with
+`Expected: "http://127.0.0.1:3000/"  Received: "http://127.0.0.1:3000/assets/never-written"`.
+Reverted, rebuilt (`index-FTsILBqK.js`, 678,596 bytes), and the full suite is green:
+**unit 21 passed / 0 failed**, **e2e 74 passed / 0 failed (3.1 m, headless Firefox)**.

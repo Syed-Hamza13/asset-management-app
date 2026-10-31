@@ -34,11 +34,16 @@ test.describe('field definitions', () => {
     ).toBeVisible();
 
     // textContent, not innerText: the table headers are rendered uppercase by CSS
-    // (text-transform) while the markup still says "Name".
-    const headerTexts = await page
-      .locator('main table thead th')
-      .evaluateAll((els) => els.map((el) => el.textContent.trim()));
-    expect(headerTexts).toEqual(['Name', 'Key', 'Type', 'Owner', 'Source', '']);
+    // (text-transform) while the markup still says "Name". toHaveText() retries, so
+    // a table that is still rendering right after goto() cannot read as an empty list.
+    await expect(page.locator('main table thead th')).toHaveText([
+      'Name',
+      'Key',
+      'Type',
+      'Owner',
+      'Source',
+      '',
+    ]);
 
     const rows = page.locator('main table tbody tr');
     await expect(rows).toHaveCount(fields.length);

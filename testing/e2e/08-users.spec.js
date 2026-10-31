@@ -65,6 +65,7 @@ test.describe('users', () => {
     await page.getByRole('button', { name: '+ Add User', exact: true }).click();
 
     const dialog = modal(page, 'Add User');
+    await expect(dialog).toBeVisible();
     const labels = await controlLabels(dialog);
     expect(labels.slice(0, 4)).toEqual(['Email', 'Display Name', 'Temporary Password', 'Role']);
     expect(labels.slice(4).sort()).toEqual([...caps.all].sort());
