@@ -115,7 +115,7 @@ export function Dropdowns() {
       <div>
         <div className="mb-4 flex items-center justify-between">
           <div>
-            <h2 className="text-xl font-bold">Dropdowns</h2>
+            <h2 className="page-title text-xl font-bold">Dropdowns</h2>
             <p className="mt-1 text-sm text-slate-500">Reusable option sets.</p>
           </div>
           <Button onClick={() => setOpen(true)}>+ Add</Button>
@@ -136,7 +136,7 @@ export function Dropdowns() {
               <button
                 key={item.id}
                 onClick={() => select(item.id)}
-                className={`block w-full px-4 py-4 text-left hover:bg-slate-50 ${selected?.id === item.id ? "bg-slate-50" : ""}`}
+                className={`block w-full px-4 py-4 text-left transition-colors hover:bg-slate-100 ${selected?.id === item.id ? "bg-slate-50" : ""}`}
               >
                 <div className="font-medium">{item.name}</div>
                 <div className="text-xs text-slate-500">
@@ -195,7 +195,7 @@ export function Dropdowns() {
                   <th />
                 </tr>
               </thead>
-              <tbody className="divide-y divide-slate-100">
+              <tbody className="row-hover divide-y divide-slate-100">
                 {selected.options.map((item) => (
                   <tr key={item.id}>
                     <td className="px-4 py-3">{item.label}</td>

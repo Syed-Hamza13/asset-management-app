@@ -18,7 +18,7 @@ This is a **read-only** architecture and scope review of the current React + Exp
 
 ### 1.1 Tech stack
 
-- **Frontend:** React 19, Vite 7, React Router 7, Tailwind CSS 4, `xlsx` for client-side Excel export.
+- **Frontend:** React 19, Vite 7, React Router 7, Tailwind CSS 4, `xlsx` for client-side Excel export, `lucide-react` for the asset-type card icons (loaded as a separate async chunk).
 - **Backend:** Node.js (ESM), Express 5, `mysql2/promise`, Zod for request validation, `argon2` for password hashing, `express-session` with `express-mysql-session` store, `helmet`, `cors`, `cookie-parser`, `express-rate-limit`, Cloudflare Turnstile for login/setup verification.
 - **Database:** MySQL (InnoDB). Numbered SQL migrations under [server/migrations](./server/migrations) are applied automatically at server startup by [runMigrations](./server/src/config/migrate.js).
 - **Deployment:** Single-container Docker image. Express serves the built React bundle from `client/dist` and exposes the API under `/api/v1`. See [Dockerfile](./Dockerfile) and [docker-compose.example.yaml](./docker-compose.example.yaml).
@@ -89,7 +89,7 @@ All routes below are mounted under `/api/v1` and protected by `requireAuth` only
 - `GET /health` (public)
 - `GET /api/v1/setup/status`, `POST /api/v1/setup` (public, one-time)
 - `POST /api/v1/auth/login`, `POST /api/v1/auth/logout`, `GET /api/v1/auth/me`, `GET /api/v1/auth/csrf`, `POST /api/v1/auth/change-password`
-- `GET|PUT /api/v1/branding`
+- `GET|PUT /api/v1/branding` (auth), `GET /api/v1/branding/icon` and `GET /manifest.webmanifest` (public: raw favicon bytes plus a generated web app manifest, so the tab and install/home-screen icons are correct on the sign-in screen too)
 - `GET|PUT /api/v1/common-form`
 - `GET|POST /api/v1/common-form/automations`, `DELETE /api/v1/common-form/automations/:id`
 - `GET|POST /api/v1/asset-types`, `GET|PATCH|DELETE /api/v1/asset-types/:id`
@@ -121,9 +121,10 @@ Routes are declared in [App.jsx](./client/src/App.jsx). Navigation is in [Layout
 - `/fields` → [Fields.jsx](./client/src/pages/Fields.jsx).
 - `/dropdowns` → [Dropdowns.jsx](./client/src/pages/Dropdowns.jsx).
 - `/settings` → [Settings.jsx](./client/src/pages/Settings.jsx): branding + change password only.
-- `/login`, `/setup` → public.
+- `/` (public) → [Login.jsx](./client/src/pages/Login.jsx): sign-in card + Quick Entry form, shown in place when signed out. There is no `/login` route.
+- `/setup` → public.
 
-Shared components: [DynamicForm.jsx](./client/src/components/DynamicForm.jsx), [AutomationBuilder.jsx](./client/src/components/AutomationBuilder.jsx), [ui.jsx](./client/src/components/ui.jsx), [Turnstile.jsx](./client/src/components/Turnstile.jsx). Contexts: [AuthContext.jsx](./client/src/context/AuthContext.jsx), [ToastContext.jsx](./client/src/context/ToastContext.jsx).
+Shared components: [DynamicForm.jsx](./client/src/components/DynamicForm.jsx), [AutomationBuilder.jsx](./client/src/components/AutomationBuilder.jsx), [ui.jsx](./client/src/components/ui.jsx), [Turnstile.jsx](./client/src/components/Turnstile.jsx), [AssetTypeIcon.jsx](./client/src/components/AssetTypeIcon.jsx) (name→icon card badge; the Lucide pool and word map live in [icons/assetIcons.js](./client/src/icons/assetIcons.js) and load through a dynamic `import()` chunk so they never block first paint). Contexts: [AuthContext.jsx](./client/src/context/AuthContext.jsx), [ToastContext.jsx](./client/src/context/ToastContext.jsx).
 
 ---
 

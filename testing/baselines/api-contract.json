@@ -1,0 +1,785 @@
+{
+  "capturedAt": "2026-10-30T19:38:14.254Z",
+  "base": "http://127.0.0.1:3000",
+  "endpoints": {
+    "/setup/status": {
+      "status": 200,
+      "keys": {
+        "data": {
+          "setupRequired": "boolean"
+        },
+        "success": "boolean"
+      }
+    },
+    "/auth/turnstile-config": {
+      "status": 200,
+      "keys": {
+        "data": {
+          "enabled": "boolean",
+          "enforce": "boolean",
+          "siteKey": "string"
+        },
+        "success": "boolean"
+      }
+    },
+    "/auth/me": {
+      "status": 200,
+      "keys": {
+        "data": {
+          "csrfToken": "string",
+          "user": {
+            "email": "string",
+            "id": "number",
+            "mustChangePassword": "boolean",
+            "permissions": [],
+            "role": "string"
+          }
+        },
+        "success": "boolean"
+      }
+    },
+    "/branding": {
+      "status": 200,
+      "keys": {
+        "data": {
+          "appIcon": "string",
+          "favicon": "string"
+        },
+        "success": "boolean"
+      }
+    },
+    "/asset-types": {
+      "status": 200,
+      "keys": {
+        "data": [
+          {
+            "asset_count": "number",
+            "created_at": "string",
+            "id": "number",
+            "is_owner": "boolean",
+            "name": "string",
+            "slug": "string",
+            "updated_at": "string"
+          }
+        ],
+        "success": "boolean"
+      }
+    },
+    "/common-form": {
+      "status": 200,
+      "keys": {
+        "data": [
+          {
+            "display_order": "number",
+            "dropdown_id": "object",
+            "field_key": "string",
+            "id": "number",
+            "name": "string",
+            "required": "boolean",
+            "showInList": "boolean",
+            "show_in_list": "number",
+            "type": "string"
+          }
+        ],
+        "success": "boolean"
+      }
+    },
+    "/common-form/automations": {
+      "status": 200,
+      "keys": {
+        "data": [
+          {
+            "action_type": "string",
+            "action_value": "string",
+            "condition_type": "string",
+            "condition_value": "object",
+            "id": "number",
+            "source_dropdown_id": "object",
+            "source_field_id": "number",
+            "source_field_name": "string",
+            "source_field_type": "string",
+            "target_dropdown_id": "number",
+            "target_field_id": "number",
+            "target_field_name": "string",
+            "target_field_type": "string"
+          }
+        ],
+        "success": "boolean"
+      }
+    },
+    "/common-form/copy-targets": {
+      "status": 200,
+      "keys": {
+        "data": [
+          {
+            "displayName": "string",
+            "email": "string",
+            "fieldCount": "number",
+            "ready": "boolean",
+            "ruleCount": "number",
+            "userId": "number"
+          }
+        ],
+        "success": "boolean"
+      }
+    },
+    "/fields": {
+      "status": 200,
+      "keys": {
+        "data": [
+          {
+            "dropdown_id": "object",
+            "dropdown_name": "object",
+            "field_key": "string",
+            "form_usage_count": "number",
+            "id": "number",
+            "is_active": "number",
+            "name": "string",
+            "owner_display_name": "string",
+            "owner_email": "string",
+            "owner_role": "string",
+            "owner_user_id": "number",
+            "type": "string"
+          }
+        ],
+        "success": "boolean"
+      }
+    },
+    "/dropdowns": {
+      "status": 200,
+      "keys": {
+        "data": [
+          {
+            "id": "number",
+            "is_active": "number",
+            "name": "string",
+            "option_count": "number",
+            "slug": "string"
+          }
+        ],
+        "success": "boolean"
+      }
+    },
+    "/users": {
+      "status": 200,
+      "keys": {
+        "data": [
+          {
+            "createdAt": "string",
+            "displayName": "string",
+            "email": "string",
+            "id": "number",
+            "isActive": "boolean",
+            "mustChangePassword": "boolean",
+            "permissions": [
+              "string"
+            ],
+            "role": "string"
+          }
+        ],
+        "success": "boolean"
+      }
+    },
+    "/users/capabilities": {
+      "status": 200,
+      "keys": {
+        "data": {
+          "all": [
+            "string"
+          ],
+          "defaults": [
+            "string"
+          ]
+        },
+        "success": "boolean"
+      }
+    },
+    "/email/templates": {
+      "status": 200,
+      "keys": {
+        "data": [
+          {
+            "bodyTemplate": "string",
+            "createdAt": "string",
+            "id": "number",
+            "isActive": "boolean",
+            "name": "string",
+            "subjectTemplate": "string",
+            "updatedAt": "string"
+          }
+        ],
+        "success": "boolean"
+      }
+    },
+    "/email/recipients": {
+      "status": 200,
+      "keys": {
+        "data": [
+          {
+            "createdAt": "string",
+            "email": "string",
+            "id": "number",
+            "isActive": "boolean",
+            "name": "string",
+            "updatedAt": "string"
+          }
+        ],
+        "success": "boolean"
+      }
+    },
+    "/email/rules": {
+      "status": 200,
+      "keys": {
+        "data": [
+          {
+            "assetTypeId": "number",
+            "assetTypeIds": [
+              "number"
+            ],
+            "assetTypeName": "string",
+            "assetTypes": [
+              {
+                "id": "number",
+                "name": "string"
+              }
+            ],
+            "createdAt": "string",
+            "id": "number",
+            "isActive": "boolean",
+            "recipients": [
+              {
+                "email": "string",
+                "id": "number",
+                "isActive": "boolean",
+                "name": "string"
+              }
+            ],
+            "templateId": "number",
+            "templateName": "string",
+            "triggerCondition": "string",
+            "triggerConditionValue": "string",
+            "triggerFieldId": "number",
+            "triggerFieldKey": "string",
+            "triggerType": "string",
+            "updatedAt": "string"
+          }
+        ],
+        "success": "boolean"
+      }
+    },
+    "/email/history?limit=200": {
+      "status": 200,
+      "keys": {
+        "data": [
+          {
+            "assetPublicId": "string",
+            "attempts": "number",
+            "createdAt": "string",
+            "eventType": "string",
+            "id": "number",
+            "lastError": "object",
+            "ownerEmail": "string",
+            "recipients": [
+              {
+                "email": "string",
+                "name": "string"
+              }
+            ],
+            "ruleId": "number",
+            "sentAt": "string",
+            "status": "string",
+            "template": {
+              "body": "string",
+              "name": "string",
+              "subject": "string"
+            }
+          }
+        ],
+        "success": "boolean"
+      }
+    },
+    "/email/history/all?limit=200": {
+      "status": 200,
+      "keys": {
+        "data": [
+          {
+            "assetPublicId": "string",
+            "attempts": "number",
+            "createdAt": "string",
+            "eventType": "string",
+            "id": "number",
+            "lastError": "object",
+            "ownerEmail": "string",
+            "recipients": [
+              {
+                "email": "string",
+                "name": "string"
+              }
+            ],
+            "ruleId": "number",
+            "sentAt": "string",
+            "status": "string",
+            "template": {
+              "body": "string",
+              "name": "string",
+              "subject": "string"
+            }
+          }
+        ],
+        "success": "boolean"
+      }
+    },
+    "/notifications": {
+      "status": 200,
+      "keys": {
+        "data": [],
+        "success": "boolean"
+      }
+    },
+    "/notifications/unread-count": {
+      "status": 200,
+      "keys": {
+        "data": {
+          "unread": "number"
+        },
+        "success": "boolean"
+      }
+    },
+    "/quick-entry": {
+      "status": 200,
+      "keys": {
+        "data": {
+          "enabled": "boolean",
+          "fields": [
+            {
+              "id": "number",
+              "label": "string",
+              "placeholder": "string",
+              "required": "boolean",
+              "type": "string"
+            }
+          ],
+          "notifyBody": "string",
+          "notifyPicker": "boolean",
+          "notifyTitle": "string",
+          "recipients": [
+            "number"
+          ],
+          "subtitle": "string",
+          "title": "string"
+        },
+        "success": "boolean"
+      }
+    },
+    "/settings/smtp": {
+      "status": 200,
+      "keys": {
+        "data": {
+          "configured": "boolean",
+          "enabled": "boolean",
+          "fromEmail": "string",
+          "fromName": "string",
+          "host": "string",
+          "passwordConfigured": "boolean",
+          "port": "number",
+          "replyTo": "string",
+          "secure": "boolean",
+          "username": "string"
+        },
+        "success": "boolean"
+      }
+    },
+    "/settings/turnstile": {
+      "status": 200,
+      "keys": {
+        "data": {
+          "enabled": "boolean",
+          "enforcedInProduction": "boolean",
+          "hasSecretKey": "boolean",
+          "hasSiteKey": "boolean"
+        },
+        "success": "boolean"
+      }
+    },
+    "/settings/ip-access": {
+      "status": 200,
+      "keys": {
+        "data": {
+          "enforced": "boolean",
+          "entries": [
+            {
+              "family": "number",
+              "kind": "string",
+              "raw": "string"
+            }
+          ],
+          "entryCount": "number",
+          "invalid": [],
+          "invalidCount": "number",
+          "list": "string",
+          "loginEnabled": "boolean",
+          "maxEntries": "number",
+          "quickEntryEnabled": "boolean",
+          "yourIp": "string",
+          "yourIpAllowed": "boolean"
+        },
+        "success": "boolean"
+      }
+    }
+  },
+  "types": {
+    "1": {
+      "name": "Bluetooth Earbuds",
+      "form": [
+        "0:name:text:req:list",
+        "1:user:text::list",
+        "2:date_issue:auto_date::list",
+        "3:date_purchase:date::list",
+        "4:remark:text::list",
+        "5:quantity:quantity::",
+        "6:status:dropdown::list"
+      ],
+      "automations": [
+        "common_form#1 user filled -> status set_value(issued) [dropdown]",
+        "common_form#3 user empty -> status set_value(stock) [dropdown]"
+      ],
+      "assetAutomations": []
+    },
+    "2": {
+      "name": "Bluetooth Headphone",
+      "form": [
+        "0:name:text:req:list",
+        "1:user:text::list",
+        "2:date_issue:auto_date::list",
+        "3:date_purchase:date::list",
+        "4:remark:text::list",
+        "5:quantity:quantity::",
+        "6:status:dropdown::list"
+      ],
+      "automations": [
+        "common_form#1 user filled -> status set_value(issued) [dropdown]",
+        "common_form#3 user empty -> status set_value(stock) [dropdown]"
+      ],
+      "assetAutomations": []
+    },
+    "3": {
+      "name": "Bluetooth Neckband",
+      "form": [
+        "0:name:text:req:list",
+        "1:user:text::list",
+        "2:date_issue:auto_date::list",
+        "3:date_purchase:date::list",
+        "4:remark:text::list",
+        "5:quantity:quantity::",
+        "6:status:dropdown::list"
+      ],
+      "automations": [
+        "common_form#1 user filled -> status set_value(issued) [dropdown]",
+        "common_form#3 user empty -> status set_value(stock) [dropdown]"
+      ],
+      "assetAutomations": []
+    },
+    "4": {
+      "name": "Headphones Wired",
+      "form": [
+        "0:name:text:req:list",
+        "1:user:text::list",
+        "2:date_issue:auto_date::list",
+        "3:date_purchase:date::list",
+        "4:remark:text::list",
+        "5:quantity:quantity::",
+        "6:status:dropdown::list"
+      ],
+      "automations": [
+        "common_form#1 user filled -> status set_value(issued) [dropdown]",
+        "common_form#3 user empty -> status set_value(stock) [dropdown]"
+      ],
+      "assetAutomations": []
+    },
+    "5": {
+      "name": "Bag Pack",
+      "form": [
+        "0:name:text:req:list",
+        "1:user:text::list",
+        "2:date_issue:auto_date::list",
+        "3:date_purchase:date::list",
+        "4:remark:text::list",
+        "5:quantity:quantity::",
+        "6:status:dropdown::list"
+      ],
+      "automations": [
+        "common_form#1 user filled -> status set_value(issued) [dropdown]",
+        "common_form#3 user empty -> status set_value(stock) [dropdown]"
+      ],
+      "assetAutomations": []
+    },
+    "6": {
+      "name": "Brother Drum",
+      "form": [
+        "0:name:text:req:list",
+        "1:user:text::list",
+        "2:date_issue:auto_date::list",
+        "3:date_purchase:date::list",
+        "4:remark:text::list",
+        "5:quantity:quantity::",
+        "6:status:dropdown::list"
+      ],
+      "automations": [
+        "common_form#1 user filled -> status set_value(issued) [dropdown]",
+        "common_form#3 user empty -> status set_value(stock) [dropdown]"
+      ],
+      "assetAutomations": []
+    },
+    "7": {
+      "name": "Brother Toner",
+      "form": [
+        "0:name:text:req:list",
+        "1:user:text::list",
+        "2:date_issue:auto_date::list",
+        "3:date_purchase:date::list",
+        "4:remark:text::list",
+        "5:quantity:quantity::",
+        "6:status:dropdown::list"
+      ],
+      "automations": [
+        "common_form#1 user filled -> status set_value(issued) [dropdown]",
+        "common_form#3 user empty -> status set_value(stock) [dropdown]"
+      ],
+      "assetAutomations": []
+    },
+    "8": {
+      "name": "Bluetooth Mouse",
+      "form": [
+        "0:name:text:req:list",
+        "1:user:text::list",
+        "2:date_issue:auto_date::list",
+        "3:date_purchase:date::list",
+        "4:remark:text::list",
+        "5:quantity:quantity::",
+        "6:status:dropdown::list"
+      ],
+      "automations": [
+        "common_form#1 user filled -> status set_value(issued) [dropdown]",
+        "common_form#3 user empty -> status set_value(stock) [dropdown]"
+      ],
+      "assetAutomations": []
+    },
+    "9": {
+      "name": "C Type USB Hub",
+      "form": [
+        "0:name:text:req:list",
+        "1:user:text::list",
+        "2:date_issue:auto_date::list",
+        "3:date_purchase:date::list",
+        "4:remark:text::list",
+        "5:quantity:quantity::",
+        "6:status:dropdown::list"
+      ],
+      "automations": [
+        "common_form#1 user filled -> status set_value(issued) [dropdown]",
+        "common_form#3 user empty -> status set_value(stock) [dropdown]"
+      ],
+      "assetAutomations": []
+    },
+    "10": {
+      "name": "Wired Mouse",
+      "form": [
+        "0:name:text:req:list",
+        "1:user:text::list",
+        "2:date_issue:auto_date::list",
+        "3:date_purchase:date::list",
+        "4:remark:text::list",
+        "5:quantity:quantity::",
+        "6:status:dropdown::list"
+      ],
+      "automations": [
+        "common_form#1 user filled -> status set_value(issued) [dropdown]",
+        "common_form#3 user empty -> status set_value(stock) [dropdown]"
+      ],
+      "assetAutomations": []
+    },
+    "11": {
+      "name": "Laptop Battery",
+      "form": [
+        "0:name:text:req:list",
+        "1:user:text::list",
+        "2:date_issue:auto_date::list",
+        "3:date_purchase:date::list",
+        "4:remark:text::list",
+        "5:quantity:quantity::",
+        "6:status:dropdown::list"
+      ],
+      "automations": [
+        "common_form#1 user filled -> status set_value(issued) [dropdown]",
+        "common_form#3 user empty -> status set_value(stock) [dropdown]"
+      ],
+      "assetAutomations": []
+    },
+    "12": {
+      "name": "Desktop Speaker",
+      "form": [
+        "0:name:text:req:list",
+        "1:user:text::list",
+        "2:date_issue:auto_date::list",
+        "3:date_purchase:date::list",
+        "4:remark:text::list",
+        "5:quantity:quantity::",
+        "6:status:dropdown::list"
+      ],
+      "automations": [
+        "common_form#1 user filled -> status set_value(issued) [dropdown]",
+        "common_form#3 user empty -> status set_value(stock) [dropdown]"
+      ],
+      "assetAutomations": []
+    },
+    "13": {
+      "name": "USB Micro Cable",
+      "form": [
+        "0:name:text:req:list",
+        "1:user:text::list",
+        "2:date_issue:auto_date::list",
+        "3:date_purchase:date::list",
+        "4:remark:text::list",
+        "5:quantity:quantity::",
+        "6:status:dropdown::list"
+      ],
+      "automations": [
+        "common_form#1 user filled -> status set_value(issued) [dropdown]",
+        "common_form#3 user empty -> status set_value(stock) [dropdown]"
+      ],
+      "assetAutomations": []
+    },
+    "14": {
+      "name": "Extention Board",
+      "form": [
+        "0:name:text:req:list",
+        "1:user:text::list",
+        "2:date_issue:auto_date::list",
+        "3:date_purchase:date::list",
+        "4:remark:text::list",
+        "5:quantity:quantity::",
+        "6:status:dropdown::list"
+      ],
+      "automations": [
+        "common_form#1 user filled -> status set_value(issued) [dropdown]",
+        "common_form#3 user empty -> status set_value(stock) [dropdown]"
+      ],
+      "assetAutomations": []
+    },
+    "26": {
+      "name": "Troly Speaker",
+      "form": [
+        "0:name:text:req:list",
+        "1:model:text::list",
+        "2:user:text::list",
+        "3:date_of_issue:auto_date::list",
+        "4:mobile_no:number::list",
+        "5:status:dropdown::list",
+        "6:city:text::list"
+      ],
+      "automations": [
+        "common_form#4 user filled -> status set_value(issued) [dropdown]",
+        "common_form#5 user empty -> status set_value(stock) [dropdown]",
+        "common_form#8 user empty -> date_of_issue clear [auto_date]"
+      ],
+      "assetAutomations": []
+    },
+    "27": {
+      "name": "Charger",
+      "form": [
+        "0:name:text:req:list",
+        "1:model:text::list",
+        "2:user:text::list",
+        "3:date_of_issue:auto_date::list",
+        "4:mobile_no:number::list",
+        "5:status:dropdown::list"
+      ],
+      "automations": [
+        "common_form#4 user filled -> status set_value(issued) [dropdown]",
+        "common_form#5 user empty -> status set_value(stock) [dropdown]",
+        "common_form#8 user empty -> date_of_issue clear [auto_date]"
+      ],
+      "assetAutomations": []
+    },
+    "31": {
+      "name": "pencil",
+      "form": [
+        "0:name:text:req:list",
+        "1:user:text::list",
+        "2:date_issue:auto_date::list",
+        "3:date_purchase:date::list",
+        "4:remark:text::list",
+        "5:quantity:quantity::",
+        "6:status:dropdown::list"
+      ],
+      "automations": [
+        "common_form#14 user filled -> status set_value(issued) [dropdown]",
+        "common_form#15 user empty -> status set_value(stock) [dropdown]"
+      ],
+      "assetAutomations": []
+    },
+    "52": {
+      "name": "char",
+      "form": [
+        "0:name:text:req:list",
+        "1:user:text::list",
+        "2:date_issue:auto_date::list",
+        "3:date_purchase:date::list",
+        "4:remark:text::list",
+        "5:quantity:quantity::",
+        "6:status:dropdown::list"
+      ],
+      "automations": [
+        "common_form#1 user filled -> status set_value(issued) [dropdown]",
+        "common_form#3 user empty -> status set_value(stock) [dropdown]"
+      ],
+      "assetAutomations": []
+    },
+    "dropdown:1": {
+      "name": "Status",
+      "options": [
+        "issued",
+        "stock"
+      ]
+    },
+    "dropdown:2": {
+      "name": "Status",
+      "options": [
+        "issued",
+        "stock"
+      ]
+    },
+    "dropdown:5": {
+      "name": "Status",
+      "options": [
+        "issued",
+        "stock"
+      ]
+    }
+  },
+  "fieldDefinitions": [
+    "16:undefined:text:active",
+    "34:undefined:auto_date:active",
+    "14:undefined:auto_date:active",
+    "4:undefined:auto_date:active",
+    "35:undefined:date:active",
+    "3:undefined:date:active",
+    "9:undefined:auto_date:active",
+    "8:undefined:text:active",
+    "15:undefined:number:active",
+    "11:undefined:text:active",
+    "32:undefined:text:active",
+    "10:undefined:text:active",
+    "1:undefined:text:active",
+    "37:undefined:quantity:active",
+    "6:undefined:quantity:active",
+    "36:undefined:text:active",
+    "7:undefined:text:active",
+    "38:undefined:dropdown:active",
+    "13:undefined:dropdown:active",
+    "5:undefined:dropdown:active",
+    "33:undefined:text:active",
+    "12:undefined:text:active",
+    "2:undefined:text:active"
+  ]
+}

@@ -2,56 +2,75 @@ import { pool, withTransaction } from '../../config/db.js';
 import { AppError } from '../../utils/errors.js';
 import { slugify } from '../../utils/slug.js';
 import { assertIntegerId } from '../../utils/validation.js';
+import { ownerScope } from '../../utils/scope.js';
 
-export async function listDropdowns() {
+export async function listDropdowns(actor) {
+  const scope = ownerScope(actor, 'd.owner_user_id');
   const [rows] = await pool.execute(`SELECT d.id, d.name, d.slug, d.is_active,
     (SELECT COUNT(*) FROM dropdown_options o WHERE o.dropdown_id=d.id) AS option_count
-    FROM dropdowns d ORDER BY d.name ASC`);
+    FROM dropdowns d WHERE 1=1${scope.sql} ORDER BY d.name ASC`, scope.params);
   return rows;
 }
 
-export async function getDropdown(id) {
+export async function getDropdown(actor, id) {
   const idN = assertIntegerId(id, 'dropdown id');
-  const [rows] = await pool.execute('SELECT id, name, slug, is_active FROM dropdowns WHERE id = ?', [idN]);
-  if (!rows.length) throw new AppError(404, 'DROPDOWN_NOT_FOUND', 'Dropdown not found.');
+  const [[row]] = await pool.execute('SELECT id, name, slug, is_active, owner_user_id FROM dropdowns WHERE id = ?', [idN]);
+  if (!row) throw new AppError(404, 'DROPDOWN_NOT_FOUND', 'Dropdown not found.');
+  // A dropdown is readable by its owner and by admins. It is additionally
+  // readable by any user who can access an asset type whose form references it,
+  // so shared types keep working for participants (their forms render options).
+  if (!actor.isAdmin && Number(row.owner_user_id) !== Number(actor.id)) {
+    const [[used]] = await pool.execute(
+      `SELECT COUNT(*) AS count
+       FROM asset_type_fields atf
+       JOIN field_definitions f ON f.id = atf.field_definition_id
+       JOIN asset_types at ON at.id = atf.asset_type_id
+       WHERE f.dropdown_id = ? AND (at.owner_user_id = ?
+         OR EXISTS (SELECT 1 FROM asset_type_shares s WHERE s.asset_type_id = at.id AND s.user_id = ?))`,
+      [idN, actor.id, actor.id],
+    );
+    if (Number(used.count) === 0) throw new AppError(404, 'DROPDOWN_NOT_FOUND', 'Dropdown not found.');
+  }
   const [options] = await pool.execute('SELECT id, label, value, display_order, is_active FROM dropdown_options WHERE dropdown_id = ? ORDER BY display_order, id', [idN]);
-  return { ...rows[0], options };
+  return { ...row, options };
 }
 
-export async function createDropdown(name) {
+export async function createDropdown(actor, name) {
   const slug = slugify(name);
   try {
-    const [r] = await pool.execute('INSERT INTO dropdowns (name, slug) VALUES (?, ?)', [name, slug]);
-    return getDropdown(r.insertId);
+    const [r] = await pool.execute('INSERT INTO dropdowns (name, slug, owner_user_id) VALUES (?, ?, ?)', [name, slug, actor.id]);
+    return getDropdown(actor, r.insertId);
   } catch (e) {
     if (e.code === 'ER_DUP_ENTRY') throw new AppError(409, 'DROPDOWN_EXISTS', 'A dropdown with this name already exists.');
     throw e;
   }
 }
 
-export async function updateDropdown(id, name, isActive = true) {
+export async function updateDropdown(actor, id, name, isActive = true) {
   const idN = assertIntegerId(id, 'dropdown id');
+  const scope = ownerScope(actor);
   try {
-    const [r] = await pool.execute('UPDATE dropdowns SET name = ?, slug = ?, is_active = ? WHERE id = ?', [name, slugify(name), Boolean(isActive), idN]);
+    const [r] = await pool.execute(`UPDATE dropdowns SET name = ?, slug = ?, is_active = ? WHERE id = ?${scope.sql}`, [name, slugify(name), Boolean(isActive), idN, ...scope.params]);
     if (!r.affectedRows) throw new AppError(404, 'DROPDOWN_NOT_FOUND', 'Dropdown not found.');
-    return getDropdown(idN);
+    return getDropdown(actor, idN);
   } catch (e) {
     if (e.code === 'ER_DUP_ENTRY') throw new AppError(409, 'DROPDOWN_EXISTS', 'A dropdown with this name already exists.');
     throw e;
   }
 }
 
-export async function deleteDropdown(id) {
+export async function deleteDropdown(actor, id) {
   const idN = assertIntegerId(id, 'dropdown id');
-  const [[fieldRef]] = await pool.execute('SELECT COUNT(*) AS count FROM field_definitions WHERE dropdown_id = ?', [idN]);
+  const scope = ownerScope(actor);
+  const [[fieldRef]] = await pool.execute(`SELECT COUNT(*) AS count FROM field_definitions WHERE dropdown_id = ?${scope.sql}`, [idN, ...scope.params]);
   if (Number(fieldRef.count) > 0) throw new AppError(409, 'DROPDOWN_IN_USE', 'Dropdown is used by one or more fields.');
-  const [r] = await pool.execute('DELETE FROM dropdowns WHERE id = ?', [idN]);
+  const [r] = await pool.execute(`DELETE FROM dropdowns WHERE id = ?${scope.sql}`, [idN, ...scope.params]);
   if (!r.affectedRows) throw new AppError(404, 'DROPDOWN_NOT_FOUND', 'Dropdown not found.');
 }
 
-export async function addOption(dropdownId, label, value, displayOrder = 0) {
+export async function addOption(actor, dropdownId, label, value, displayOrder = 0) {
   const idN = assertIntegerId(dropdownId, 'dropdown id');
-  await getDropdown(idN);
+  await getDropdown(actor, idN);
   try {
     const [r] = await pool.execute('INSERT INTO dropdown_options (dropdown_id, label, value, display_order) VALUES (?, ?, ?, ?)', [idN, label, value, displayOrder]);
     return r.insertId;
@@ -61,9 +80,10 @@ export async function addOption(dropdownId, label, value, displayOrder = 0) {
   }
 }
 
-export async function updateOption(dropdownId, optionId, { label, value, displayOrder, isActive }) {
+export async function updateOption(actor, dropdownId, optionId, { label, value, displayOrder, isActive }) {
   const d = assertIntegerId(dropdownId, 'dropdown id');
   const o = assertIntegerId(optionId, 'option id');
+  const dropdown = await getDropdown(actor, d);
   const [[existing]] = await pool.execute('SELECT id, label, value FROM dropdown_options WHERE id = ? AND dropdown_id = ?', [o, d]);
   if (!existing) throw new AppError(404, 'OPTION_NOT_FOUND', 'Dropdown option not found.');
   try {
@@ -72,7 +92,9 @@ export async function updateOption(dropdownId, optionId, { label, value, display
       if (existing.value === value) return;
       const [fieldRows] = await conn.execute('SELECT id, `key` AS field_key FROM field_definitions WHERE dropdown_id = ?', [d]);
       for (const field of fieldRows) {
-        await conn.execute('UPDATE assets SET values_json = JSON_SET(values_json, CONCAT("$.", ?), ?) WHERE JSON_UNQUOTE(JSON_EXTRACT(values_json, CONCAT("$.", ?))) = ?', [field.field_key, value, field.field_key, existing.value]);
+        // Field keys are only unique per owner, so the value rewrite must stay
+        // within the dropdown owner's assets.
+        await conn.execute('UPDATE assets SET values_json = JSON_SET(values_json, CONCAT("$.", ?), ?) WHERE owner_user_id = ? AND JSON_UNQUOTE(JSON_EXTRACT(values_json, CONCAT("$.", ?))) = ?', [field.field_key, value, dropdown.owner_user_id, field.field_key, existing.value]);
         await conn.execute('UPDATE asset_automations SET condition_value = CASE WHEN source_field_id = ? AND condition_value = ? THEN ? ELSE condition_value END, action_value = CASE WHEN target_field_id = ? AND action_value = ? THEN ? ELSE action_value END WHERE (source_field_id = ? AND condition_value = ?) OR (target_field_id = ? AND action_value = ?)', [field.id, existing.value, value, field.id, existing.value, value, field.id, existing.value, field.id, existing.value]);
         await conn.execute('UPDATE common_form_automations SET condition_value = CASE WHEN source_field_id = ? AND condition_value = ? THEN ? ELSE condition_value END, action_value = CASE WHEN target_field_id = ? AND action_value = ? THEN ? ELSE action_value END WHERE (source_field_id = ? AND condition_value = ?) OR (target_field_id = ? AND action_value = ?)', [field.id, existing.value, value, field.id, existing.value, value, field.id, existing.value, field.id, existing.value]);
       }
@@ -81,12 +103,13 @@ export async function updateOption(dropdownId, optionId, { label, value, display
     if (e.code === 'ER_DUP_ENTRY') throw new AppError(409, 'OPTION_EXISTS', 'That option value already exists.');
     throw e;
   }
-  return getDropdown(d);
+  return getDropdown(actor, d);
 }
 
-export async function deleteOption(dropdownId, optionId) {
+export async function deleteOption(actor, dropdownId, optionId) {
   const d = assertIntegerId(dropdownId, 'dropdown id');
   const o = assertIntegerId(optionId, 'option id');
+  await getDropdown(actor, d);
   const [r] = await pool.execute('UPDATE dropdown_options SET is_active = 0 WHERE id = ? AND dropdown_id = ?', [o, d]);
   if (!r.affectedRows) throw new AppError(404, 'OPTION_NOT_FOUND', 'Dropdown option not found.');
 }

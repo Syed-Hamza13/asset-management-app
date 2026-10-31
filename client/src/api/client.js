@@ -11,6 +11,7 @@ async function request(path, options = {}) {
     !["GET", "HEAD", "OPTIONS"].includes(method) &&
     !token &&
     !path.includes("/auth/login") &&
+    !path.includes("/quick-entry/submit") &&
     !path.includes("/setup")
   ) {
     token = await ensureCsrf();
@@ -73,6 +74,12 @@ export const api = {
     }
   },
   me: () => request("/auth/me"),
+  turnstileConfig: () => request("/auth/turnstile-config"),
+  turnstile: {
+    settings: () => request("/settings/turnstile"),
+    update: (enabled) =>
+      request("/settings/turnstile", { method: "PUT", body: JSON.stringify({ enabled }) }),
+  },
   changePassword: (body) =>
     request("/auth/change-password", {
       method: "POST",
@@ -99,6 +106,12 @@ export const api = {
         method: "PUT",
         body: JSON.stringify(body),
       }),
+    getShares: (id) => request(`/asset-types/${id}/shares`),
+    setShares: (id, userIds) =>
+      request(`/asset-types/${id}/shares`, {
+        method: "PUT",
+        body: JSON.stringify({ userIds }),
+      }),
   },
   commonForm: {
     get: () => request('/common-form'),
@@ -108,6 +121,8 @@ export const api = {
       create: (body) => request('/common-form/automations', { method: 'POST', body: JSON.stringify(body) }),
       remove: (id) => request(`/common-form/automations/${id}`, { method: 'DELETE' }),
     },
+    copyTargets: () => request('/common-form/copy-targets'),
+    copyTo: (userIds) => request('/common-form/copy', { method: 'POST', body: JSON.stringify({ userIds }) }),
   },
   fields: {
     list: () => request("/fields"),
@@ -115,6 +130,8 @@ export const api = {
       request("/fields", { method: "POST", body: JSON.stringify(body) }),
     update: (id, body) =>
       request(`/fields/${id}`, { method: "PATCH", body: JSON.stringify(body) }),
+    previewTypeChange: (id, type) =>
+      request(`/fields/${id}/type-preview`, { method: "POST", body: JSON.stringify({ type }) }),
     remove: (id) => request(`/fields/${id}`, { method: "DELETE" }),
   },
   dropdowns: {
@@ -149,6 +166,68 @@ export const api = {
         body: JSON.stringify(body),
       }),
     remove: (id) => request(`/automations/${id}`, { method: "DELETE" }),
+  },
+  users: {
+    list: () => request("/users"),
+    capabilities: () => request("/users/capabilities"),
+    create: (body) => request("/users", { method: "POST", body: JSON.stringify(body) }),
+    update: (id, body) => request(`/users/${id}`, { method: "PATCH", body: JSON.stringify(body) }),
+    resetPassword: (id, password) => request(`/users/${id}/reset-password`, { method: "POST", body: JSON.stringify({ password }) }),
+    setPermissions: (id, permissions) => request(`/users/${id}/permissions`, { method: "PUT", body: JSON.stringify({ permissions }) }),
+    remove: (id) => request(`/users/${id}`, { method: "DELETE" }),
+  },
+  quickEntry: {
+    publicConfig: () => request("/quick-entry/public-config"),
+    submit: (body) => request("/quick-entry/submit", { method: "POST", body: JSON.stringify(body) }),
+    get: () => request("/quick-entry"),
+    save: (body) => request("/quick-entry", { method: "PUT", body: JSON.stringify(body) }),
+  },
+  notifications: {
+    list: (unreadOnly = false) => request(`/notifications${unreadOnly ? "?unread=true" : ""}`),
+    unreadCount: () => request("/notifications/unread-count"),
+    markRead: (id) => request(`/notifications/${id}/read`, { method: "POST" }),
+    markAllRead: () => request("/notifications/read-all", { method: "POST" }),
+  },
+  smtp: {
+    get: () => request("/settings/smtp"),
+    update: (body) => request("/settings/smtp", { method: "PUT", body: JSON.stringify(body) }),
+    testConnection: () => request("/settings/smtp/test-connection", { method: "POST" }),
+    testEmail: (to) => request("/settings/smtp/test-email", { method: "POST", body: JSON.stringify({ to }) }),
+  },
+  ipAccess: {
+    get: () => request("/settings/ip-access"),
+    update: (body) => request("/settings/ip-access", { method: "PUT", body: JSON.stringify(body) }),
+  },
+  email: {
+    templates: {
+      list: () => request("/email/templates"),
+      create: (body) => request("/email/templates", { method: "POST", body: JSON.stringify(body) }),
+      update: (id, body) => request(`/email/templates/${id}`, { method: "PATCH", body: JSON.stringify(body) }),
+      remove: (id) => request(`/email/templates/${id}`, { method: "DELETE" }),
+    },
+    recipients: {
+      list: () => request("/email/recipients"),
+      create: (body) => request("/email/recipients", { method: "POST", body: JSON.stringify(body) }),
+      update: (id, body) => request(`/email/recipients/${id}`, { method: "PATCH", body: JSON.stringify(body) }),
+      remove: (id) => request(`/email/recipients/${id}`, { method: "DELETE" }),
+    },
+    rules: {
+      list: (assetTypeId) => request(`/email/rules${assetTypeId ? `?assetTypeId=${assetTypeId}` : ""}`),
+      create: (body) => request("/email/rules", { method: "POST", body: JSON.stringify(body) }),
+      update: (id, body) => request(`/email/rules/${id}`, { method: "PATCH", body: JSON.stringify(body) }),
+      remove: (id) => request(`/email/rules/${id}`, { method: "DELETE" }),
+      test: (id) => request(`/email/rules/${id}/test`, { method: "POST" }),
+    },
+    history: (params = {}) => {
+      const q = new URLSearchParams(Object.entries(params).filter(([, v]) => v !== undefined && v !== "" && v !== null));
+      const qs = q.toString();
+      return request(`/email/history${qs ? `?${qs}` : ""}`);
+    },
+    historyAll: (params = {}) => {
+      const q = new URLSearchParams(Object.entries(params).filter(([, v]) => v !== undefined && v !== "" && v !== null));
+      const qs = q.toString();
+      return request(`/email/history/all${qs ? `?${qs}` : ""}`);
+    },
   },
   assets: {
     form: (typeId) => request(`/asset-types/${typeId}/assets/form`),

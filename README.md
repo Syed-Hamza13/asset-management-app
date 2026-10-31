@@ -9,6 +9,8 @@ A production-ready asset management system for tracking inventory, asset metadat
 - Support dropdown-driven metadata and dynamic field configuration
 - Add business automations for asset lifecycle workflows
 - Secure admin login with session-based authentication and CSRF protection
+- Multi-user accounts with role-based permissions and strict per-owner data scoping (admin sees everything, ordinary users only see and manage their own records)
+- Email notifications: per-user templates, recipients, and rules that fire on asset creation or field changes, delivered through a configurable global SMTP server
 - Perform filtered reporting and spreadsheet export for operational analysis
 - Support production-ready deployment behind a single Express container
 
@@ -100,6 +102,17 @@ SESSION_SECRET=replace_with_a_long_random_secret
 TURNSTILE_SITE_KEY=your_site_key
 TURNSTILE_SECRET_KEY=your_secret_key
 SESSION_MAX_AGE_MS=86400000
+
+# Email notifications (see "Email notifications & SMTP" below).
+SMTP_ENCRYPTION_KEY=replace_with_a_long_random_secret_at_least_32_chars
+EMAIL_WORKER_ENABLED=true
+EMAIL_WORKER_INTERVAL_MS=15000
+EMAIL_MAX_ATTEMPTS=5
+
+# Network restriction (IP allowlist) break-glass. Leave unset to enforce the
+# allowlist configured in Settings. Set to false and restart if a saved list
+# ever locks every admin out of sign-in.
+IP_ACCESS_ENFORCE=true
 ```
 
 For frontend build-time Turnstile config in local development, create a `client/.env` file if needed:
@@ -183,6 +196,14 @@ services:
       TURNSTILE_SITE_KEY: your_site_key
       TURNSTILE_SECRET_KEY: your_secret_key
       SESSION_MAX_AGE_MS: 86400000
+
+      SMTP_ENCRYPTION_KEY: replace_with_a_long_random_secret_at_least_32_chars
+      EMAIL_WORKER_ENABLED: "true"
+      EMAIL_WORKER_INTERVAL_MS: 15000
+      EMAIL_MAX_ATTEMPTS: 5
+
+      # "false" disables the Settings IP allowlist (break-glass after a lockout).
+      IP_ACCESS_ENFORCE: "true"
 ```
 
 ### 3) Start the container
@@ -225,8 +246,68 @@ Before public deployment, make sure:
 - HTTPS is enabled in front of the app
 - `FRONTEND_URL` matches your real domain or IP
 - `.env` files are not committed to GitHub
+- optionally restrict sign-in and Quick Entry to your office networks — see **Network restriction (IP allowlist)** below
 
 
+## Network restriction (IP allowlist)
+
+Admins can limit the app to specific IP addresses or networks from **Settings → Network restriction (IP allowlist)**. Two switches share one allowlist: *Restrict the whole app* (sign-in and every route) and *Restrict Quick Entry* (only the public form).
+
+- Accepted entries: a single address (`192.168.1.23`), a CIDR block (`192.168.1.0/24`), a from-to range (`10.0.0.5-10.0.0.40`) or a trailing wildcard (`192.168.7.*`). One per line, or comma/semicolon separated. Maximum 200 entries.
+- **A blocked address sees nothing.** Every request — the page, the assets and any API route — answers with status `404`. HTML requests get a standalone page whose only content is a large centred `404` (no app bundle, no links, no error text, no service worker), and API requests get the same JSON error the app uses for unknown routes, so nothing hints that the app exists. The real reason and the caller's address are only written to the server log. When only the Quick Entry switch is on, the app stays reachable and the card disappears because `GET /quick-entry/public-config` reports the form disabled.
+- Addresses are compared against the **TCP socket** address, not `X-Forwarded-For`. `app.set('trust proxy', 1)` is on and nothing in front of the container overwrites that header, so `X-Forwarded-For` — and therefore `req.ip` — is client-controlled; a spoofed header cannot get past the gate (verified).
+- **Docker must see the real client address.** With a published port (`ports:`) and Docker's default userland proxy, the container observes the bridge gateway IP (e.g. `172.17.0.1`) for *every* visitor, so a per-device range can never match. Use one of:
+  - `network_mode: "host"` on the service (then `PORT` must be the port you actually want exposed), or
+  - `"userland-proxy": false` in `/etc/docker/daemon.json` on the host, which keeps the client source address through the DNAT rule.
+  Confirm from a second device with the **"IP the server sees for you"** line on the Settings card before switching the gate on.
+- **Fail-open:** a switch that is on but has no readable entry allows access and logs a warning, so a mistyped list degrades to the old behaviour instead of a lockout. Saving an invalid entry is rejected with the offending line quoted.
+- **Break-glass:** if an allowlist ever locks every admin out, set `IP_ACCESS_ENFORCE=false` in the environment and restart the container. The allowlist is then saved but not applied; correct it in Settings and remove the override.
+- Two paths stay reachable so a lockout is repairable: `/health` (monitoring) and `GET/PUT /api/v1/settings/ip-access` **for an already-signed-in session** — a signed-out stranger still gets the same 404 there.
+- **Only the Express server is the gate.** The Vite dev server (`client/vite.config.js`, port 5173) has no allowlist and proxies `/api` from its own loopback socket, so a machine reaching it looks like `127.0.0.1` to Express and passes the gate. It is therefore bound to `127.0.0.1`; to test the restriction from another device, open `http://<this-machine>:3000`, which is the same edge production uses.
+
+
+
+## Users, roles and permissions
+
+The app supports multiple accounts on top of the initial admin.
+
+- The account created during first-time setup is the **admin**. The admin can view and manage **every** record in the workspace and grants permissions to other users.
+- Ordinary users are **private by default**: they can only see and manage asset types, assets, fields, dropdowns, common form, automations, reports and email settings that **they** created. One user can never read another user's records; attempts to access someone else's record return `404` (not `403`) so record existence is not leaked.
+- Because the admin sees every account's records, the **Field Definitions** page has an **Owner** column — the owner's display name (falling back to their email) plus a `You` badge for the admin's own rows — so identically named fields created by different users, or brought in by a common-form copy, can be told apart at a glance. Ordinary users only ever receive their own rows, so the column is hidden for them.
+- The admin creates users from the **Users** page and assigns each a set of capabilities (for example `assets.create_own`, `reports.export_own`, `email.rules.manage_own`). New users default to an **Assets only** capability set and can be adjusted per user.
+- New users must change their temporary password on first login; until they do, they are routed to the Settings page.
+- Deactivating a user immediately invalidates their active sessions.
+
+### Copy the common form to another user
+
+Sharing is not how the common form works — every user owns exactly one common form, and its rows point at that user's own field definitions. So instead of sharing, the admin can **copy** their own form into another user's account: **Common Form → Copy to users**.
+
+- The copy is **deep and independent**: every field the target does not have yet is created in the target's name (same name, key and type), and a dropdown field brings its dropdown — matched by slug — together with any missing options. Automation rules are copied last, remapped to the target's own field ids, so the rule values keep matching the copied option values.
+- After the copy the two forms share no rows at all. Either side can edit, reorder or delete their own copy with no effect on the other.
+- A copy only runs against a user whose common form is **still empty** (no fields, no rules). Anyone who already built their own form is listed as `has N fields` and cannot be selected, so no user's work is ever overwritten. Repeated attempts are refused the same way at the API (`409 TARGET_FORM_NOT_EMPTY`).
+- A field key the target already owns is reused only when it is the same type on the same dropdown; otherwise that user's copy stops with `409 TARGET_FIELD_CONFLICT` and the other selected users are unaffected — each user is copied in their own transaction.
+- Once the fields are in place the target's own asset types get them attached and ordered, exactly as when the user saves their own common form.
+- Admins and deactivated users never appear in the list. Both endpoints (`GET /api/v1/common-form/copy-targets`, `POST /api/v1/common-form/copy`) are admin-only.
+
+## Email notifications & SMTP
+
+Email delivery is opt-in and requires a SMTP server the admin configures once.
+
+1. **SMTP settings (admin only).** On the Settings page an admin sees an **SMTP** card: host, port, secure (TLS/SSL), username, password, from-email, from-name and an optional reply-to, plus a **Configured / Not configured** badge, a **Test connection** button and a **Send test email** button.
+   - The SMTP password is **encrypted at rest** with AES-256-GCM using `SMTP_ENCRYPTION_KEY`, and is **never returned by any API** - the UI only shows whether a password is stored. Treat `SMTP_ENCRYPTION_KEY` as a permanent secret: rotating it makes the previously stored SMTP password unreadable, so re-enter the password after any key change.
+2. **Templates, recipients and rules (per user).** Users with the email capabilities create plain-text templates (with placeholders such as `{{asset_type_name}}`, `{{asset_public_id}}`, `{{field.<key>}}`), a list of recipients, and rules that fire when **an asset is created** or a **specific field changes** (conditions: any change, equals, not equals, becomes filled, becomes empty).
+3. **Delivery model.** When a rule matches, a row is inserted into the `email_outbox` table inside the **same transaction** as the asset save (transactional outbox) - so saving an asset never fails because email was down, and the user sees an "N notification(s) queued" toast. A background worker inside the same process polls the outbox and sends.
+   - The worker uses a **MySQL `GET_LOCK`**, so it is safe to run the container more than once: only one process sends at a time. Set `EMAIL_WORKER_ENABLED=false` to queue without sending. `EMAIL_WORKER_INTERVAL_MS` controls the poll interval and `EMAIL_MAX_ATTEMPTS` bounds retries. Failed sends use exponential backoff; permanent errors (auth, bad address) stop retrying, transient ones (network) retry.
+   - Every queued/sent/failed attempt is visible under **Email History** (admins can toggle **All users**).
+
+## Backups & migrations
+
+- **Back up before upgrading.** Take a full `mysqldump` of the database before starting the app on a new version, e.g.
+  ```bash
+  mysqldump -h <DB_HOST> -P <DB_PORT> -u <DB_USER> -p <DB_NAME> > backup-$(date +%F).sql
+  ```
+- **Migrations run automatically** at startup, in filename order, from `server/migrations`. They are tracked in the `schema_migrations` table and each one is written to be **idempotent** and to **preserve existing rows** (the multi-user migration assigns all pre-existing records to the existing admin).
+- After upgrading, the existing single account continues to work as the admin; no manual data step is required.
 
 ## Notes
 

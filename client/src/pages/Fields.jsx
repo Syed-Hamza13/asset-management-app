@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { useToast } from "../context/ToastContext";
+import { useAuth } from "../context/AuthContext";
 import { api } from "../api/client";
 import {
   Button,
@@ -14,6 +15,7 @@ import {
 const types = [
   ["text", "Short Text"],
   ["multiline", "Multiline Text"],
+  ["mobile", "Mobile Number"],
   ["number", "Number"],
   ["quantity", "Quantity (1-15)"],
   ["boolean", "Yes / No"],
@@ -21,11 +23,39 @@ const types = [
   ["auto_date", "Current Date (Editable)"],
   ["dropdown", "Dropdown"],
 ];
+const typeLabel = (t) => types.find((x) => x[0] === t)?.[1] || t;
+
+function OwnerCell({ field, viewerId }) {
+  const name = (field.owner_display_name || "").trim() || field.owner_email || "Unknown";
+  const isSelf = Number(field.owner_user_id) === Number(viewerId);
+  const badge = isSelf ? "You" : field.owner_role === "admin" ? "Admin" : null;
+  return (
+    <div className="min-w-0">
+      <div className="flex items-center gap-1.5">
+        <span className="truncate font-medium text-slate-700" title={name}>
+          {name}
+        </span>
+        {badge && (
+          <span className="shrink-0 rounded-full bg-slate-100 px-2 py-0.5 text-[11px] font-semibold text-slate-600">
+            {badge}
+          </span>
+        )}
+      </div>
+      {field.owner_display_name && (
+        <div className="truncate text-xs text-slate-400">{field.owner_email}</div>
+      )}
+    </div>
+  );
+}
+
 export function Fields() {
+  const { user, isAdmin } = useAuth();
   const [items, setItems] = useState([]);
   const [dropdowns, setDropdowns] = useState([]);
   const [open, setOpen] = useState(false);
   const [edit, setEdit] = useState(null);
+  const [migration, setMigration] = useState(null);
+  const [busy, setBusy] = useState(false);
   const blank = {
     name: "",
     key: "",
@@ -49,6 +79,7 @@ export function Fields() {
   }, []);
   function startEdit(x) {
     setEdit(x);
+    setMigration(null);
     setForm({
       name: x.name,
       key: x.field_key,
@@ -58,24 +89,61 @@ export function Fields() {
     });
     setOpen(true);
   }
-  async function submit(e) {
-    e.preventDefault();
+  function closeAll() {
+    setOpen(false);
+    setEdit(null);
+    setMigration(null);
+    setForm(blank);
     setError("");
+  }
+  function buildBody() {
+    return {
+      ...form,
+      dropdownId: form.type === "dropdown" ? Number(form.dropdownId) : null,
+    };
+  }
+  async function performSave(body) {
+    setBusy(true);
     try {
-      const body = {
-        ...form,
-        dropdownId: form.type === "dropdown" ? Number(form.dropdownId) : null,
-      };
       if (edit) await api.fields.update(edit.id, body);
       else await api.fields.create(body);
-      setOpen(false);
-      setEdit(null);
-      setForm(blank);
-        showToast(edit ? "Field updated successfully." : "Field created successfully.");
+      closeAll();
+      showToast(
+        migration
+          ? "Field type changed and data migrated."
+          : edit
+            ? "Field updated successfully."
+            : "Field created successfully."
+      );
       await load();
     } catch (e) {
       setError(e.message);
+      setMigration(null);
+    } finally {
+      setBusy(false);
     }
+  }
+  async function submit(e) {
+    e.preventDefault();
+    setError("");
+    // Editing a field that is in use and whose type is changing -> preview + confirm.
+    const typeChanged = edit && form.type !== edit.type;
+    const inUse = edit && Number(edit.form_usage_count) > 0;
+    if (typeChanged && inUse) {
+      setBusy(true);
+      try {
+        setMigration(await api.fields.previewTypeChange(edit.id, form.type));
+      } catch (e) {
+        setError(e.message);
+      } finally {
+        setBusy(false);
+      }
+      return;
+    }
+    await performSave(buildBody());
+  }
+  function confirmMigration() {
+    performSave(buildBody());
   }
   async function remove(id) {
     if (!confirm("Delete this field definition? It must not be in use."))
@@ -90,14 +158,17 @@ export function Fields() {
   }
   return (
     <div>
-      <div className="mb-6 flex items-center justify-between">
-        <div>
-          <h2 className="text-xl font-bold">Field Definitions</h2>
+      <div className="mb-6 flex flex-wrap items-start justify-between gap-3">
+        <div className="min-w-0 flex-1">
+          <h2 className="page-title text-xl font-bold">Field Definitions</h2>
           <p className="mt-1 text-sm text-slate-500">
-            Reusable fields for your asset forms.
+            {isAdmin
+              ? "Reusable fields for your asset forms. Every user's fields are listed here — use the Owner column to tell identical names apart."
+              : "Reusable fields for your asset forms."}
           </p>
         </div>
         <Button
+          className="shrink-0"
           onClick={() => {
             setEdit(null);
             setForm(blank);
@@ -127,11 +198,12 @@ export function Fields() {
                   <th className="px-5 py-3">Name</th>
                   <th className="px-5 py-3">Key</th>
                   <th className="px-5 py-3">Type</th>
+                  {isAdmin && <th className="px-5 py-3">Owner</th>}
                   <th className="px-5 py-3">Source</th>
                   <th className="px-5 py-3"></th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-slate-100">
+              <tbody className="row-hover divide-y divide-slate-100">
                 {items.map((x) => (
                   <tr key={x.id}>
                     <td className="px-5 py-4 font-medium">{x.name}</td>
@@ -141,6 +213,11 @@ export function Fields() {
                     <td className="px-5 py-4">
                       {types.find((t) => t[0] === x.type)?.[1]}
                     </td>
+                    {isAdmin && (
+                      <td className="px-5 py-4 max-w-[220px]">
+                        <OwnerCell field={x} viewerId={user?.id} />
+                      </td>
+                    )}
                     <td className="px-5 py-4">{x.dropdown_name || "—"}</td>
                     <td className="px-5 py-4 text-right">
                       <Button variant="ghost" onClick={() => startEdit(x)}>
@@ -159,10 +236,93 @@ export function Fields() {
       )}
       <Modal
         open={open}
-        title={edit ? "Edit Field" : "Create Field"}
-        onClose={() => setOpen(false)}
+        title={migration ? "Confirm type change" : edit ? "Edit Field" : "Create Field"}
+        onClose={closeAll}
       >
-        <form onSubmit={submit} className="space-y-4">
+        {migration ? (
+          <div className="space-y-4">
+            <p className="text-sm text-slate-600">
+              You are changing <span className="font-semibold">{migration.data.from && typeLabel(migration.data.from)}</span>{" "}
+              to <span className="font-semibold">{typeLabel(migration.data.to)}</span> for “{form.name}”.
+            </p>
+            {migration.data.blocked ? (
+              <Alert>{migration.data.blockReason}</Alert>
+            ) : !migration.data.migratable ? (
+              <>
+                <Alert>
+                  This change cannot be applied yet: {migration.data.issueCount} existing
+                  value(s) are not compatible with{" "}
+                  <span className="font-semibold">{typeLabel(migration.data.to)}</span>. Fix or
+                  clear these first, then try again.
+                </Alert>
+                <div className="max-h-64 overflow-y-auto rounded-lg border border-slate-200">
+                  <table className="w-full text-left text-xs">
+                    <thead className="bg-slate-50 text-slate-500">
+                      <tr>
+                        <th className="px-3 py-2">Asset</th>
+                        <th className="px-3 py-2">Type</th>
+                        <th className="px-3 py-2">Current value</th>
+                        <th className="px-3 py-2">Why</th>
+                      </tr>
+                    </thead>
+                    <tbody className="row-hover divide-y divide-slate-100">
+                      {migration.data.issues.map((it) => (
+                        <tr key={it.publicId}>
+                          <td className="px-3 py-2 font-medium">{it.label}</td>
+                          <td className="px-3 py-2 text-slate-500">{it.assetTypeName}</td>
+                          <td className="px-3 py-2 font-mono">{it.value}</td>
+                          <td className="px-3 py-2 text-rose-600">{it.reason}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </>
+            ) : (
+              <div className="space-y-3 text-sm text-slate-600">
+                <p>
+                  This field is used by{" "}
+                  <span className="font-semibold">{migration.data.usage}</span> form(s). Their
+                  stored data will be kept and migrated automatically.
+                </p>
+                <ul className="list-disc space-y-1 pl-5">
+                  <li>
+                    {migration.data.rowsToMigrate === 0
+                      ? "No stored values need converting."
+                      : `${migration.data.rowsToMigrate} stored value(s) will be converted to the new type.`}
+                  </li>
+                  <li>
+                    {migration.data.references?.automationRules
+                      ? `${migration.data.references.automationRules} automation rule(s) reference this field and will keep working.`
+                      : "No automation rules reference this field."}
+                  </li>
+                  <li>
+                    {migration.data.references?.emailRules
+                      ? `${migration.data.references.emailRules} email rule(s) use it as a trigger; they will keep working.`
+                      : "No email rules use it as a trigger."}
+                  </li>
+                  <li>
+                    {migration.data.references?.templates?.length
+                      ? `Email templates referencing it (${migration.data.references.templates.join(", ")}) use its key, which does not change.`
+                      : "No email templates embed this field."}
+                  </li>
+                </ul>
+              </div>
+            )}
+            {error && <Alert>{error}</Alert>}
+            <div className="flex gap-2">
+              <Button variant="ghost" onClick={() => setMigration(null)} disabled={busy}>
+                Back
+              </Button>
+              {migration.data.blocked || !migration.data.migratable ? null : (
+                <Button className="flex-1" onClick={confirmMigration} loading={busy}>
+                  Confirm &amp; migrate
+                </Button>
+              )}
+            </div>
+          </div>
+        ) : (
+          <form onSubmit={submit} className="space-y-4">
           <Input
             label="Field Name"
             value={form.name}
@@ -192,10 +352,17 @@ export function Fields() {
               required
             />
           )}
-          <Button className="w-full">
+          {edit && form.type !== edit.type && Number(edit.form_usage_count) > 0 && (
+            <p className="text-xs text-slate-500">
+              This field is used by {edit.form_usage_count} form(s). You will be shown a
+              confirmation before the type is changed.
+            </p>
+          )}
+          <Button className="w-full" loading={busy}>
             {edit ? "Save changes" : "Create field"}
           </Button>
         </form>
+        )}
       </Modal>
     </div>
   );

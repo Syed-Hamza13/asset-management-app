@@ -1,6 +1,12 @@
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 import { DateInput, Input, Select } from "./ui";
-import { todayInputValue } from '../utils';
+import { todayInputValue } from '../utils/date';
+import {
+  actionValue,
+  conditionMatches,
+  isBlockedAutoDateClear,
+  isFilledValue,
+} from '../../../shared/automationRules.js';
 
 export function DynamicForm({
   fields,
@@ -8,25 +14,81 @@ export function DynamicForm({
   setValues,
   errors = {},
   disabled = false,
+  automations = [],
+  previousValues = {},
+  isNew = false,
 }) {
+  const automatedRef = useRef(new Set());
+  const manualRef = useRef(new Set());
+  const applyingRef = useRef(false);
+  const lastValuesRef = useRef(values);
+  const seededRef = useRef(false);
+
+  // One pass: seed the auto_date defaults for a create form, then run the
+  // owner's automation rules over the seeded values. Seeding has to happen in
+  // the same pass as the rules — the rules used to evaluate the pre-seed
+  // snapshot and wrote a "" back over the date that had just been queued.
+  // Seeding runs once per mounted form, so a date the user clears by hand stays
+  // cleared, and on edit (isNew false) the saved value is never touched.
   useEffect(() => {
-    setValues((current) => {
-      const next = { ...current };
-      let changed = false;
+    if (applyingRef.current) {
+      applyingRef.current = false;
+      lastValuesRef.current = values;
+      return;
+    }
+    const previous = lastValuesRef.current;
+    lastValuesRef.current = values;
+
+    const next = { ...values };
+    if (isNew && fields.length && !seededRef.current) {
+      seededRef.current = true;
       for (const field of fields) {
-        if (
-          field.type === "auto_date" &&
-          (current[field.key] === undefined ||
-            current[field.key] === null ||
-            current[field.key] === "")
-        ) {
+        if (field.type === "auto_date" && !isFilledValue(next[field.key]))
           next[field.key] = todayInputValue();
-          changed = true;
-        }
       }
-      return changed ? next : current;
-    });
-  }, [fields, setValues]);
+    }
+
+    const changedKeys = new Set(
+      Object.keys(values).filter((key) => values[key] !== previous[key]),
+    );
+    for (const key of changedKeys) {
+      if (automatedRef.current.has(key)) {
+        manualRef.current.add(key);
+        automatedRef.current.delete(key);
+      }
+    }
+    for (const rule of automations) {
+      if (manualRef.current.has(rule.targetKey)) {
+        if (!changedKeys.has(rule.sourceKey)) continue;
+        manualRef.current.delete(rule.targetKey);
+      }
+      if (
+        !conditionMatches(
+          rule,
+          next[rule.sourceKey],
+          previousValues[rule.sourceKey],
+        )
+      )
+        continue;
+      if (isBlockedAutoDateClear(rule, next[rule.targetKey])) continue;
+      next[rule.targetKey] = actionValue(rule);
+      automatedRef.current.add(rule.targetKey);
+    }
+    // Write only the keys this pass changed. Replacing the whole object here
+    // would drop any update queued in the same commit.
+    const patch = {};
+    let changed = false;
+    for (const [key, value] of Object.entries(next)) {
+      if (values[key] !== value) {
+        patch[key] = value;
+        changed = true;
+      }
+    }
+    if (changed) {
+      applyingRef.current = true;
+      setValues((current) => ({ ...current, ...patch }));
+    }
+  }, [values, automations, previousValues, setValues, fields, isNew]);
 
   return (
     <div className="grid gap-4 md:grid-cols-2">
@@ -43,6 +105,21 @@ export function DynamicForm({
               key={field.id}
               label={field.name}
               type="textarea"
+              value={value ?? ""}
+              onChange={(e) =>
+                setValues((v) => ({ ...v, [field.key]: e.target.value }))
+              }
+              {...common}
+            />
+          );
+        if (field.type === "mobile")
+          return (
+            <Input
+              key={field.id}
+              label={field.name}
+              type="tel"
+              inputMode="tel"
+              placeholder="e.g. 9876543210"
               value={value ?? ""}
               onChange={(e) =>
                 setValues((v) => ({ ...v, [field.key]: e.target.value }))

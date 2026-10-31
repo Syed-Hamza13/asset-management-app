@@ -1,0 +1,17 @@
+{
+  "name": "asset-management-testing",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "description": "Behaviour-lock test suite for the asset management app: node unit tests + Playwright (Firefox) end-to-end tests. Written before the modularisation refactor so the refactor can be proven behaviour-neutral.",
+  "scripts": {
+    "test:unit": "node --test \"unit/**/*.test.js\"",
+    "snapshot:capture": "node helpers/capture-snapshot.js",
+    "test:e2e": "playwright test --project=firefox",
+    "test:e2e:headed": "playwright test --project=firefox --headed",
+    "test:all": "npm run test:unit && npm run test:e2e"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.64.1"
+  }
+}

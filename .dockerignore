@@ -18,6 +18,17 @@ pnpm-debug.log*
 README.md
 client/README.md
 server/README.md
+IMPLEMENTATION-PLAN.md
+
+# Test harness, its browser traces, local SQL dumps and the real compose file.
+# None of these are COPYed, but they make the build context ~22MB heavier.
+testing/
+backups/
+tmp-logs/
+docker-compose.yml
+docker-compose.yaml
+docker-compose.example.yaml
+.github/
 
 coverage
 .vscode

@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { authenticate, changePassword } from './service.js';
+import { authenticate, changePassword, getUserProfile } from './service.js';
 import { AppError, asyncHandler } from '../../utils/errors.js';
 import { verifyTurnstile } from '../setup/turnstile.js';
 import { getCsrfToken } from '../../middleware/csrf.js';
@@ -15,10 +15,10 @@ export const login = asyncHandler(async (req, res) => {
   req.session.userId = user.id;
   req.session.email = user.email;
   req.session.csrfToken = getCsrfToken(req);
-  res.json({ success: true, data: { user: { id: user.id, email: user.email } } });
+  res.json({ success: true, data: { user: await getUserProfile(user.id) } });
 });
 
-export const me = asyncHandler(async (req, res) => res.json({ success: true, data: { user: { id: req.session.userId, email: req.session.email }, csrfToken: getCsrfToken(req) } }));
+export const me = asyncHandler(async (req, res) => res.json({ success: true, data: { user: { id: req.user.id, email: req.user.email, role: req.user.role, permissions: req.user.permissions, mustChangePassword: req.user.mustChangePassword }, csrfToken: getCsrfToken(req) } }));
 export const csrf = asyncHandler(async (req, res) => res.json({ success: true, data: { csrfToken: getCsrfToken(req) } }));
 export const logout = asyncHandler(async (req, res) => {
   await new Promise((resolve, reject) => req.session.destroy((error) => error ? reject(error) : resolve()));

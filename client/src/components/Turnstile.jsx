@@ -1,18 +1,19 @@
 import { useEffect, useRef } from 'react';
 
-export function Turnstile({ onToken }) {
+// `config` comes from GET /auth/turnstile-config: { enforce, siteKey }.
+// When enforcement is off (non-production, or an admin disabled it) the parent
+// form receives the 'bypass' token so the submit button stays usable.
+export function Turnstile({ onToken, config }) {
   const ref = useRef(null);
-  const isDev = import.meta.env.DEV;
-  const siteKey = import.meta.env.VITE_TURNSTILE_SITE_KEY || '';
+  const enabled = Boolean(config?.enforce);
+  // Prefer the runtime site key from the server; fall back to a build-time value
+  // so existing deployments that only baked VITE_TURNSTILE_SITE_KEY keep working.
+  const siteKey = config?.siteKey || import.meta.env.VITE_TURNSTILE_SITE_KEY || '';
 
   useEffect(() => {
-    if (isDev) {
-      onToken('dev-bypass');
-      return undefined;
-    }
-
-    if (!siteKey) {
-      onToken('');
+    if (!config) return undefined;
+    if (!enabled || !siteKey) {
+      onToken(enabled ? '' : 'bypass');
       return undefined;
     }
 
@@ -45,12 +46,14 @@ export function Turnstile({ onToken }) {
         try { window.turnstile.remove(ref.current); } catch {}
       }
     };
-  }, [isDev, siteKey, onToken]);
+  }, [config, enabled, siteKey, onToken]);
 
-  if (isDev) {
+  if (!config) return null;
+
+  if (!enabled) {
     return (
       <div className="rounded-xl border border-dashed border-slate-300 bg-slate-50 px-3 py-2 text-xs text-slate-500">
-        Turnstile is bypassed in development because no site key is configured.
+        Human verification is turned off for this environment.
       </div>
     );
   }
@@ -58,7 +61,7 @@ export function Turnstile({ onToken }) {
   if (!siteKey) {
     return (
       <div className="rounded-xl border border-dashed border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-700">
-        Turnstile is not configured for this environment. Rebuild the Docker image with the site key.
+        Turnstile is enabled but this server has no site key configured, so sign-in is blocked.
       </div>
     );
   }

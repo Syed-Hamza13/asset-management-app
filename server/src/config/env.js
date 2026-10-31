@@ -14,7 +14,17 @@ const schema = z.object({
   SESSION_SECRET: z.string().min(32),
   TURNSTILE_SITE_KEY: z.string().default(''),
   TURNSTILE_SECRET_KEY: z.string().default(''),
-  SESSION_MAX_AGE_MS: z.coerce.number().int().positive().default(86_400_000)
+  SESSION_MAX_AGE_MS: z.coerce.number().int().positive().default(86_400_000),
+  // Phase 4 — email. SMTP_ENCRYPTION_KEY must be 32+ chars when an SMTP
+  // password is stored; it is optional at boot so existing deploys still start.
+  SMTP_ENCRYPTION_KEY: z.string().default(''),
+  EMAIL_WORKER_ENABLED: z.enum(['true', 'false']).default('true'),
+  EMAIL_WORKER_INTERVAL_MS: z.coerce.number().int().positive().default(15_000),
+  EMAIL_MAX_ATTEMPTS: z.coerce.number().int().positive().default(5),
+  // Break-glass for the IP allowlist: set to 'false' and restart if an
+  // allowlist mistake ever locks an admin out. Login/quick-entry are gated
+  // while this is 'true' (default).
+  IP_ACCESS_ENFORCE: z.enum(['true', 'false']).default('true')
 });
 
 export const env = schema.parse(process.env);

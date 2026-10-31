@@ -3,42 +3,48 @@ import { useEffect, useState } from "react";
 import { useAuth } from "../context/AuthContext";
 import { Button } from "./ui";
 import { ToastProvider } from "../context/ToastContext";
+import { NotificationsProvider } from "../context/NotificationsContext";
+import { NotificationBell } from "./NotificationBell";
 import { api } from "../api/client";
 
 const nav = [
-  ["/", "Assets"],
-  ["/reports", "Reports"],
-  ["/common-form", "Common Form"],
-  ["/fields", "Field Definitions"],
-  ["/dropdowns", "Dropdowns"],
-  ["/settings", "Settings"],
+  ["/", "Assets", null],
+  ["/reports", "Reports", "reports.view_own"],
+  ["/common-form", "Common Form", "common_form.manage_own"],
+  ["/fields", "Field Definitions", "fields.manage_own"],
+  ["/dropdowns", "Dropdowns", "dropdowns.manage_own"],
+  ["/email-notifications", "Email Notifications", "email.rules.manage_own"],
+  ["/email-history", "Email History", "email.history.view_own"],
+  ["/users", "Users", "admin"],
+  ["/settings", "Settings", null],
 ];
 export function Layout() {
-  const { user, logout } = useAuth();
+  const { user, logout, can, isAdmin } = useAuth();
   const location = useLocation();
+  const visibleNav = nav.filter(([, , cap]) => cap === null || (cap === "admin" ? isAdmin : can(cap)));
   const title = location.pathname.startsWith("/asset-types/")
     ? "Asset Type"
     : nav.find((n) => location.pathname === n[0])?.[1] || "Asset Manager";
-  const [branding, setBranding] = useState({ favicon: "", appIcon: "" });
+  // The tab favicon is served by GET /api/v1/branding/icon (linked from index.html), so it
+  // is already correct on the sign-in screen; only the sidebar icon needs the authed read.
+  const [appIcon, setAppIcon] = useState("");
   useEffect(() => {
-    api.branding.get().then((response) => setBranding(response.data)).catch(() => {});
+    api.branding.get().then((response) => setAppIcon(response.data.appIcon)).catch(() => {});
   }, []);
-  useEffect(() => {
-    if (!branding.favicon) return;
-    let link = document.querySelector('link[rel="icon"]');
-    if (!link) { link = document.createElement("link"); link.rel = "icon"; document.head.appendChild(link); }
-    link.href = branding.favicon;
-  }, [branding.favicon]);
   return (
     <ToastProvider>
+    <NotificationsProvider>
       <div className="min-h-screen bg-slate-50">
       <aside className="fixed inset-y-0 left-0 hidden w-64 border-r border-slate-200 bg-white lg:block">
-        <div className="flex h-16 items-center gap-2 px-6 text-lg font-bold">
-          {branding.appIcon && <img src={branding.appIcon} alt="" className="h-8 w-8 rounded-lg object-cover" />}
-          Asset Manager
+        <div className="flex h-16 items-center justify-between gap-2 px-6 text-lg font-bold">
+          <span className="flex min-w-0 items-center gap-2 truncate">
+            {appIcon && <img src={appIcon} alt="" className="h-8 w-8 rounded-lg object-cover" />}
+            Asset Manager
+          </span>
+          <NotificationBell align="left" />
         </div>
         <nav className="px-3 py-4">
-          {nav.map(([to, label]) => (
+          {visibleNav.map(([to, label]) => (
             <NavLink
               key={to}
               to={to}
@@ -64,13 +70,20 @@ export function Layout() {
       <div className="lg:pl-64">
         <header className="sticky top-0 z-20 border-b border-slate-200 bg-white/95 backdrop-blur lg:hidden">
           <div className="flex items-center justify-between gap-3 px-4 py-3">
-            <div className="flex min-w-0 items-center gap-2 truncate text-base font-bold">{branding.appIcon && <img src={branding.appIcon} alt="" className="h-7 w-7 rounded-md object-cover" />}{title}</div>
-            <button onClick={logout} className="shrink-0 text-sm font-semibold text-slate-600">
-              Logout
-            </button>
+            {/* An <h1>, not a div: below lg: this is the page's only visible title (the in-page
+               .page-title <h2> is hidden to avoid printing the name twice), and a screen reader
+               still needs a heading to announce. Preflight resets h1 styling, so the classes
+               below keep it pixel-identical to the div it replaced. */}
+            <h1 className="flex min-w-0 items-center gap-2 truncate text-base font-bold">{appIcon && <img src={appIcon} alt="" className="h-7 w-7 rounded-md object-cover" />}{title}</h1>
+            <div className="flex shrink-0 items-center gap-3">
+              <NotificationBell align="right" />
+              <button onClick={logout} className="text-sm font-semibold text-slate-600">
+                Logout
+              </button>
+            </div>
           </div>
           <nav className="flex gap-1 overflow-x-auto px-3 pb-3">
-            {nav.map(([to, label]) => (
+            {visibleNav.map(([to, label]) => (
               <NavLink
                 key={to}
                 to={to}
@@ -105,6 +118,7 @@ export function Layout() {
         </main>
       </div>
       </div>
+    </NotificationsProvider>
     </ToastProvider>
   );
 }

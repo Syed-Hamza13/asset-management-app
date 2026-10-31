@@ -10,12 +10,15 @@ import { env } from './config/env.js';
 import { pool } from './config/db.js';
 import { csrfProtection } from './middleware/csrf.js';
 import { errorHandler, notFound } from './middleware/errorHandler.js';
-import { requireAuth } from './middleware/auth.js';
-import { loginRateLimit } from './middleware/rateLimit.js';
+import { requireAuth, loadUser, requirePermission } from './middleware/auth.js';
+import { loginRateLimit, quickEntryRateLimit } from './middleware/rateLimit.js';
+import { requireIpAccess, requireNetworkGate } from './modules/ipAccess/middleware.js';
 import { setupStatus, setupAdmin } from './modules/setup/controller.js';
 import { login, logout, me, csrf, updatePassword } from './modules/auth/controller.js';
+import { config as turnstileConfig } from './modules/turnstile/controller.js';
+import { publicConfig as quickEntryPublicConfig, submit as quickEntrySubmit } from './modules/quickEntry/controller.js';
 import apiRouter from './routes.js';
-import { get as getBranding, update as updateBranding } from './modules/branding/controller.js';
+import { get as getBranding, icon as brandingIcon, manifest as brandingManifest, update as updateBranding } from './modules/branding/controller.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -111,19 +114,33 @@ app.use(session({
   }
 }));
 app.use(csrfProtection);
+// Whole-app network restriction: addresses outside the Settings allowlist receive a
+// plain 404 for the page, the assets and every API route (fail-open when unset).
+app.use(requireNetworkGate());
 
 app.get('/health', (_req, res) => res.json({ success: true, data: { status: 'ok' } }));
 app.get('/api/v1/setup/status', setupStatus);
+app.get('/api/v1/auth/turnstile-config', turnstileConfig);
 app.post('/api/v1/setup', setupAdmin);
 app.post('/api/v1/auth/login', loginRateLimit, login);
+// Public quick-entry: unauthenticated, CSRF skipped (no session), rate-limited + Turnstile-verified.
+// The card on the login screen hides itself when public-config reports the IP gated (see controller).
+app.get('/api/v1/quick-entry/public-config', quickEntryPublicConfig);
+app.post('/api/v1/quick-entry/submit', quickEntryRateLimit, requireIpAccess('quick_entry'), quickEntrySubmit);
 app.post('/api/v1/auth/logout', requireAuth, logout);
-app.get('/api/v1/auth/me', requireAuth, me);
+app.get('/api/v1/auth/me', requireAuth, loadUser, me);
 app.get('/api/v1/auth/csrf', requireAuth, csrf);
 app.post('/api/v1/auth/change-password', requireAuth, updatePassword);
+// Public so the sign-in screen (no session yet) can show the real tab icon.
+app.get('/api/v1/branding/icon', brandingIcon);
 app.get('/api/v1/branding', requireAuth, getBranding);
-app.put('/api/v1/branding', requireAuth, updateBranding);
+app.put('/api/v1/branding', requireAuth, loadUser, requirePermission('branding.manage'), updateBranding);
 
 app.use('/api/v1', apiRouter);
+
+// Generated from the uploaded branding so the install / home-screen icon matches;
+// registered before express.static so it wins over any bundled copy.
+app.get('/manifest.webmanifest', brandingManifest);
 
 app.use(express.static(frontendDist));
 

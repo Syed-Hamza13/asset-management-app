@@ -4,14 +4,20 @@ services:
     container_name: asset-management-app
     restart: unless-stopped
 
+    # NOTE for the Settings "Network restriction (IP allowlist)" feature: with a
+    # published port and Docker's default userland proxy, the container sees the
+    # bridge gateway IP (e.g. 172.17.0.1) for every visitor, so per-device ranges
+    # never match. Either replace this block with `network_mode: "host"`, or set
+    # `"userland-proxy": false` in /etc/docker/daemon.json on the host. Verify the
+    # "IP the server sees for you" line on a second device before switching on.
     ports:
-      - "4000:4000"
+      - "8073:8073"
 
     environment:
       NODE_ENV: production
       HOST: 0.0.0.0
-      PORT: 4000
-      FRONTEND_URL: http://localhost:4000
+      PORT: 8073
+      FRONTEND_URL: http://localhost:8073 # or ip address of the host machine
 
       DB_HOST: your_mysql_host
       DB_PORT: 3306
@@ -23,4 +29,24 @@ services:
       TURNSTILE_SITE_KEY: your_turnstile_site_key
       TURNSTILE_SECRET_KEY: your_turnstile_secret_key
       SESSION_MAX_AGE_MS: 86400000
+
+      # Email notifications.
+      # SMTP_ENCRYPTION_KEY protects the SMTP password at rest (AES-256-GCM).
+      # It must be at least 32 characters and MUST stay stable across restarts and
+      # redeploys - changing it makes the stored SMTP password undecryptable.
+      # Generate one with:
+      #   node -e "console.log(require('crypto').randomBytes(36).toString('base64'))"
+      SMTP_ENCRYPTION_KEY: replace_with_a_long_random_secret_at_least_32_chars
+      # In-process delivery worker. A MySQL GET_LOCK ensures only one container sends
+      # at a time, so this is safe even if the service is scaled horizontally.
+      # Set to "false" to stop delivering emails (rows still queue as history).
+      EMAIL_WORKER_ENABLED: "true"
+      EMAIL_WORKER_INTERVAL_MS: 15000
+      EMAIL_MAX_ATTEMPTS: 5
+
+      # Break-glass for the Settings "Network restriction (IP allowlist)" feature.
+      # While "true" (default) the saved allowlist gates sign-in and Quick Entry.
+      # Set to "false" and recreate the container if an allowlist mistake ever
+      # locks every admin out; fix the list in Settings, then set it back.
+      IP_ACCESS_ENFORCE: "true"
 
