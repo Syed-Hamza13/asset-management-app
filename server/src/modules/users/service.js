@@ -1,7 +1,7 @@
 import argon2 from 'argon2';
 import { pool, withTransaction } from '../../config/db.js';
 import { AppError } from '../../utils/errors.js';
-import { assertIntegerId } from '../../utils/validation.js';
+import { assertIntegerId, EMAIL_RE } from '../../utils/validation.js';
 import { ALL_CAPABILITIES, DEFAULT_PERMISSIONS } from './capabilities.js';
 
 export async function listUsers() {
@@ -41,13 +41,41 @@ function normalizeDisplayName(input) {
   return cleaned || null;
 }
 
+function assertValidPassword(password) {
+  if (typeof password !== 'string' || password.length < 10 || password.length > 200) {
+    throw new AppError(400, 'INVALID_PASSWORD', 'Password must be at least 10 characters.');
+  }
+}
+
+async function hashPassword(password) {
+  assertValidPassword(password);
+  return argon2.hash(password, { type: argon2.argon2id });
+}
+
+async function assertNotLastAdmin() {
+  const [[row]] = await pool.execute("SELECT COUNT(*) AS count FROM users WHERE role = 'admin' AND is_active = 1");
+  if (Number(row.count) <= 1) throw new AppError(400, 'LAST_ADMIN', 'At least one active admin must remain.');
+}
+
+// listUsers() is the single place the user DTO is assembled, so every mutation
+// returns the row through it instead of mapping the columns a second time.
+async function getUserDto(id) {
+  return (await listUsers()).find((user) => user.id === Number(id));
+}
+
+async function insertCapabilities(conn, userId, caps) {
+  for (const capability of caps) {
+    await conn.execute('INSERT INTO user_permissions (user_id, capability) VALUES (?, ?)', [userId, capability]);
+  }
+}
+
 export async function createUser({ email, password, role = 'user', permissions, displayName }) {
   const normalizedEmail = String(email || '').trim().toLowerCase();
-  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalizedEmail)) throw new AppError(400, 'INVALID_EMAIL', 'Email is invalid.');
-  if (typeof password !== 'string' || password.length < 10 || password.length > 200) throw new AppError(400, 'INVALID_PASSWORD', 'Password must be at least 10 characters.');
+  if (!EMAIL_RE.test(normalizedEmail)) throw new AppError(400, 'INVALID_EMAIL', 'Email is invalid.');
+  assertValidPassword(password);
   if (!['admin', 'user'].includes(role)) throw new AppError(400, 'INVALID_ROLE', 'Role must be admin or user.');
   const caps = role === 'admin' ? [] : normalizePermissions(permissions);
-  const passwordHash = await argon2.hash(password, { type: argon2.argon2id });
+  const passwordHash = await hashPassword(password);
   try {
     let newId;
     await withTransaction(async (conn) => {
@@ -56,11 +84,9 @@ export async function createUser({ email, password, role = 'user', permissions, 
         [normalizedEmail, normalizeDisplayName(displayName), passwordHash, role],
       );
       newId = result.insertId;
-      for (const capability of caps) {
-        await conn.execute('INSERT INTO user_permissions (user_id, capability) VALUES (?, ?)', [newId, capability]);
-      }
+      await insertCapabilities(conn, newId, caps);
     });
-    return (await listUsers()).find((user) => user.id === newId);
+    return getUserDto(newId);
   } catch (e) {
     if (e.code === 'ER_DUP_ENTRY') throw new AppError(409, 'USER_EXISTS', 'A user with this email already exists.');
     throw e;
@@ -81,26 +107,22 @@ export async function updateUser(actor, id, { isActive, role, displayName }) {
     if (role && role !== 'admin') throw new AppError(400, 'CANNOT_DEMOTE_SELF', 'You cannot remove your own admin role.');
   }
   if (role !== undefined && !['admin', 'user'].includes(role)) throw new AppError(400, 'INVALID_ROLE', 'Role must be admin or user.');
-  if (role === 'user' && target.role === 'admin') {
-    const [[adminCount]] = await pool.execute("SELECT COUNT(*) AS count FROM users WHERE role = 'admin' AND is_active = 1");
-    if (Number(adminCount.count) <= 1) throw new AppError(400, 'LAST_ADMIN', 'At least one active admin must remain.');
-  }
+  if (role === 'user' && target.role === 'admin') await assertNotLastAdmin();
   const sets = [];
   const params = [];
   if (isActive !== undefined) { sets.push('is_active = ?'); params.push(Boolean(isActive)); }
   if (role !== undefined) { sets.push('role = ?'); params.push(role); }
   if (displayName !== undefined) { sets.push('display_name = ?'); params.push(normalizeDisplayName(displayName)); }
-  if (!sets.length) return (await listUsers()).find((user) => user.id === Number(target.id));
+  if (!sets.length) return getUserDto(target.id);
   await pool.execute(`UPDATE users SET ${sets.join(', ')} WHERE id = ?`, [...params, target.id]);
-  return (await listUsers()).find((user) => user.id === Number(target.id));
+  return getUserDto(target.id);
 }
 
 export async function resetUserPassword(actor, id, newPassword) {
   const target = await getUserOr404(id);
-  if (typeof newPassword !== 'string' || newPassword.length < 10 || newPassword.length > 200) throw new AppError(400, 'INVALID_PASSWORD', 'Password must be at least 10 characters.');
-  const passwordHash = await argon2.hash(newPassword, { type: argon2.argon2id });
+  const passwordHash = await hashPassword(newPassword);
   await pool.execute('UPDATE users SET password_hash = ?, must_change_password = 1 WHERE id = ?', [passwordHash, target.id]);
-  return (await listUsers()).find((user) => user.id === Number(target.id));
+  return getUserDto(target.id);
 }
 
 export async function setUserPermissions(actor, id, permissions) {
@@ -109,20 +131,15 @@ export async function setUserPermissions(actor, id, permissions) {
   const caps = normalizePermissions(permissions ?? []);
   await withTransaction(async (conn) => {
     await conn.execute('DELETE FROM user_permissions WHERE user_id = ?', [target.id]);
-    for (const capability of caps) {
-      await conn.execute('INSERT INTO user_permissions (user_id, capability) VALUES (?, ?)', [target.id, capability]);
-    }
+    await insertCapabilities(conn, target.id, caps);
   });
-  return (await listUsers()).find((user) => user.id === Number(target.id));
+  return getUserDto(target.id);
 }
 
 export async function deleteUser(actor, id) {
   const target = await getUserOr404(id);
   if (Number(target.id) === Number(actor.id)) throw new AppError(400, 'CANNOT_DELETE_SELF', 'You cannot delete your own account.');
-  if (target.role === 'admin') {
-    const [[adminCount]] = await pool.execute("SELECT COUNT(*) AS count FROM users WHERE role = 'admin' AND is_active = 1");
-    if (Number(adminCount.count) <= 1) throw new AppError(400, 'LAST_ADMIN', 'At least one active admin must remain.');
-  }
+  if (target.role === 'admin') await assertNotLastAdmin();
   // Several child FKs are ON DELETE RESTRICT (assets->asset_types,
   // dropdown_options->dropdowns, *_fields->field_definitions), so a bare
   // cascade from users is not reliably ordered. Delete owned rows children-first.

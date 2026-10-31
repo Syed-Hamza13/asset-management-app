@@ -2,6 +2,10 @@ import { AppError } from './errors.js';
 
 export const FIELD_TYPES = new Set(['text', 'multiline', 'number', 'boolean', 'date', 'auto_date', 'dropdown', 'quantity', 'mobile']);
 
+// Shared by the user-directory and email-recipient validators; each caller keeps
+// its own error code and message.
+export const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
 export function assertIntegerId(value, name = 'id') {
   const n = Number(value);
   if (!Number.isSafeInteger(n) || n <= 0) throw new AppError(400, 'INVALID_ID', `Invalid ${name}.`);

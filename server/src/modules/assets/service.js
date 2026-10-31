@@ -2,6 +2,7 @@ import { pool, withTransaction } from "../../config/db.js";
 import { v4 as uuidv4 } from "uuid";
 import { AppError } from "../../utils/errors.js";
 import { assertIntegerId, validateFieldValue } from "../../utils/validation.js";
+import { inPlaceholders, parseJsonObject } from "../../utils/sql.js";
 import { accessibleTypesSql, assetAccessSql } from "../../utils/scope.js";
 import { applyAutomations, getEffectiveAutomations } from "./automation.js";
 import { attachCommonFields } from "../commonForms/service.js";
@@ -31,7 +32,6 @@ async function resolveActorForType(actor, assetTypeId) {
   };
 }
 
-
 export async function getAssetForm(actor, assetTypeId) {
   const id = assertIntegerId(assetTypeId, "asset type id");
   const [rows] = await pool.execute(
@@ -50,16 +50,16 @@ WHERE atf.asset_type_id = ? AND f.is_active = 1
 ORDER BY atf.display_order, f.id`,
     [id],
   );
-  const fields = rows.map(r => ({
-  id: r.id,
-  name: r.name,
-  key: r.field_key,
-  type: r.type,
-  dropdownId: r.dropdown_id,
-  required: Boolean(r.required),
-  showInList: Boolean(r.show_in_list),
-  order: r.display_order
-}));
+  const fields = rows.map((r) => ({
+    id: r.id,
+    name: r.name,
+    key: r.field_key,
+    type: r.type,
+    dropdownId: r.dropdown_id,
+    required: Boolean(r.required),
+    showInList: Boolean(r.show_in_list),
+    order: r.display_order,
+  }));
   // A sharee must see the same automations the server will actually apply on create,
   // which are the type OWNER's (common form + asset rules), not the acting user's.
   // Substituting the owner actor here keeps the client preview aligned with createAsset.
@@ -160,10 +160,7 @@ export async function listAssets(actor, assetTypeId, page = 1, pageSize = 20) {
   return {
     items: rows.map((r) => ({
       publicId: r.public_id,
-      values:
-        typeof r.values_json === "string"
-          ? JSON.parse(r.values_json)
-          : r.values_json,
+      values: parseJsonObject(r.values_json),
       createdAt: r.created_at,
       updatedAt: r.updated_at,
     })),
@@ -238,10 +235,7 @@ export async function getAsset(actor, publicId) {
     publicId: r.public_id,
     assetTypeId: r.asset_type_id,
     assetTypeName: r.asset_type_name,
-    values:
-      typeof r.values_json === "string"
-        ? JSON.parse(r.values_json)
-        : r.values_json,
+    values: parseJsonObject(r.values_json),
     createdAt: r.created_at,
     updatedAt: r.updated_at,
   };
@@ -312,7 +306,7 @@ export async function bulkUpdateAssets(actor, assetTypeId, publicIds, values) {
   if (!Array.isArray(publicIds) || publicIds.length === 0) throw new AppError(400, "ASSETS_REQUIRED", "Select at least one asset.");
   const scope = assetAccessSql(actor);
   const [rows] = await pool.execute(
-    `SELECT public_id FROM assets WHERE asset_type_id = ?${scope.sql} AND public_id IN (${publicIds.map(() => "?").join(",")})`,
+    `SELECT public_id FROM assets WHERE asset_type_id = ?${scope.sql} AND public_id IN (${inPlaceholders(publicIds)})`,
     [id, ...scope.params, ...publicIds],
   );
   if (rows.length !== publicIds.length) throw new AppError(400, "INVALID_ASSETS", "Selected assets must belong to this asset type.");
@@ -330,7 +324,7 @@ export async function bulkDeleteAssets(actor, assetTypeId, publicIds) {
   const scope = assetAccessSql(actor);
   return withTransaction(async (conn) => {
     const [result] = await conn.execute(
-      `DELETE FROM assets WHERE asset_type_id = ?${scope.sql} AND public_id IN (${publicIds.map(() => "?").join(",")})`,
+      `DELETE FROM assets WHERE asset_type_id = ?${scope.sql} AND public_id IN (${inPlaceholders(publicIds)})`,
       [id, ...scope.params, ...publicIds],
     );
     if (result.affectedRows !== publicIds.length) throw new AppError(400, "INVALID_ASSETS", "Selected assets must belong to this asset type.");

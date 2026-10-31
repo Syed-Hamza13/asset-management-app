@@ -2,6 +2,7 @@ import { pool, withTransaction } from '../../config/db.js';
 import { AppError } from '../../utils/errors.js';
 import { fieldKey } from '../../utils/slug.js';
 import { FIELD_TYPES, assertIntegerId, validateFieldValue } from '../../utils/validation.js';
+import { parseJsonObject } from '../../utils/sql.js';
 import { ownerScope } from '../../utils/scope.js';
 
 export async function listFields(actor) {
@@ -110,7 +111,7 @@ async function scanMigration(conn, actor, fieldId, fieldKey, toType) {
   const issues = [];
   const updates = [];
   for (const row of rows) {
-    const values = typeof row.values_json === 'string' ? JSON.parse(row.values_json) : row.values_json;
+    const values = parseJsonObject(row.values_json);
     if (!values || !Object.prototype.hasOwnProperty.call(values, fieldKey)) continue;
     const raw = values[fieldKey];
     if (isEmptyValue(raw)) continue; // keep blanks untouched

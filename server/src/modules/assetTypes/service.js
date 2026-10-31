@@ -2,6 +2,7 @@ import { pool, withTransaction } from "../../config/db.js";
 import { AppError } from "../../utils/errors.js";
 import { slugify } from "../../utils/slug.js";
 import { assertIntegerId } from "../../utils/validation.js";
+import { inPlaceholders } from "../../utils/sql.js";
 import { accessibleTypesSql } from "../../utils/scope.js";
 import { attachCommonFields } from "../commonForms/service.js";
 
@@ -208,7 +209,7 @@ export async function setShares(actor, id, userIds) {
   ];
   if (uniqueIds.length) {
     const [existing] = await pool.query(
-      `SELECT id FROM users WHERE id IN (${uniqueIds.map(() => "?").join(",")})`,
+      `SELECT id FROM users WHERE id IN (${inPlaceholders(uniqueIds)})`,
       uniqueIds,
     );
     const found = new Set(existing.map((u) => Number(u.id)));

@@ -2,7 +2,8 @@ import { useEffect, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { api } from "../api/client";
 import { Button, Card, Alert } from "../components/ui";
-import { formatDateValue, formatIndiaDateTime } from "../utils";
+import { formatIndiaDateTime } from "../utils/date";
+import { formatAssetValue, withDropdownOptions } from "../utils/assetValues";
 import { useToast } from "../context/ToastContext";
 import { useAuth } from "../context/AuthContext";
 export function AssetDetail() {
@@ -19,15 +20,7 @@ export function AssetDetail() {
         const a = await api.assets.get(publicId);
         setAsset(a.data);
         const f = await api.assets.form(a.data.assetTypeId);
-        const enriched = await Promise.all(
-          f.data.fields.map(async (x) => {
-            if (x.type !== "dropdown") return { ...x };
-            const dropdownId = x.dropdownId ?? x.dropdown_id;
-            if (!dropdownId) return { ...x };
-            return { ...x, options: (await api.dropdowns.get(dropdownId)).data.options };
-          }),
-        );
-        setFields(enriched);
+        setFields(await withDropdownOptions(f.data.fields));
       } catch (e) {
         setError(e.message);
       }
@@ -90,11 +83,7 @@ export function AssetDetail() {
                 {f.name}
               </div>
               <div className="mt-1 whitespace-pre-wrap text-sm text-slate-800">
-                {f.type === "date" || f.type === "auto_date"
-                  ? formatDateValue(asset.values?.[f.key])
-                  : f.type === "dropdown"
-                    ? f.options?.find((option) => String(option.value) === String(asset.values?.[f.key]))?.label ?? String(asset.values?.[f.key] ?? "")
-                    : String(asset.values?.[f.key] ?? "")}
+                {formatAssetValue(asset.values?.[f.key], f)}
               </div>
             </div>
           ))}

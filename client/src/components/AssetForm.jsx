@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { api } from "../api/client";
 import { Alert, Button } from "./ui";
 import { DynamicForm } from "./DynamicForm";
+import { withDropdownOptions } from "../utils/assetValues";
 import { useToast } from "../context/ToastContext";
 
 async function loadFields(typeId, includeQuantity) {
@@ -9,18 +10,7 @@ async function loadFields(typeId, includeQuantity) {
   const allFields = includeQuantity
     ? form.data.fields
     : form.data.fields.filter((field) => field.type !== "quantity");
-  const enriched = await Promise.all(
-    allFields.map(async (field) => {
-      if (field.type !== "dropdown") return field;
-      const dropdown = await api.dropdowns.get(field.dropdownId);
-      return {
-        ...field,
-        options: dropdown.data.options
-          .filter((option) => option.is_active)
-          .map((option) => ({ value: option.value, label: option.label })),
-      };
-    }),
-  );
+  const enriched = await withDropdownOptions(allFields, { activeOnly: true });
   return { fields: enriched, automations: form.data.automations || [] };
 }
 

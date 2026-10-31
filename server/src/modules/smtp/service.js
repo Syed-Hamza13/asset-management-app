@@ -1,6 +1,7 @@
 import nodemailer from 'nodemailer';
 import { pool } from '../../config/db.js';
 import { AppError } from '../../utils/errors.js';
+import { EMAIL_RE } from '../../utils/validation.js';
 import { encryptSecret, decryptSecret } from '../../utils/crypto.js';
 
 const ROW = 'SELECT * FROM smtp_settings WHERE id = 1';
@@ -100,7 +101,7 @@ export async function testConnection() {
 }
 
 export async function sendTestEmail(to) {
-  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(to || ''))) throw new AppError(400, 'INVALID_RECIPIENT', 'A valid recipient email is required.');
+  if (!EMAIL_RE.test(String(to || ''))) throw new AppError(400, 'INVALID_RECIPIENT', 'A valid recipient email is required.');
   const { transport, cfg } = await getSendTransport();
   const message = {
     from: fromHeader(cfg),

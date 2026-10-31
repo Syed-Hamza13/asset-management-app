@@ -1,6 +1,6 @@
 import { useEffect, useRef } from "react";
 import { DateInput, Input, Select } from "./ui";
-import { todayInputValue } from '../utils';
+import { todayInputValue } from '../utils/date';
 import {
   actionValue,
   conditionMatches,

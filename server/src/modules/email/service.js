@@ -1,11 +1,10 @@
 import { pool, withTransaction } from '../../config/db.js';
 import { AppError } from '../../utils/errors.js';
-import { assertIntegerId } from '../../utils/validation.js';
+import { assertIntegerId, EMAIL_RE } from '../../utils/validation.js';
+import { inPlaceholders } from '../../utils/sql.js';
 import { ownerScope } from '../../utils/scope.js';
 import { validatePlaceholders, renderTemplate } from './placeholder.js';
 import { getSendTransport, fromHeader } from '../smtp/service.js';
-
-const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 function mapTemplate(r) {
   return { id: r.id, name: r.name, subjectTemplate: r.subject_template, bodyTemplate: r.body_template, isActive: Boolean(r.is_active), createdAt: r.created_at, updatedAt: r.updated_at };
@@ -153,7 +152,7 @@ async function validateRuleInputs(actor, conn, { assetTypeIds, triggerType, trig
   const typeScope = ownerScope(actor, 'owner_user_id');
   const uniqueTypeIds = [...new Set((assetTypeIds || []).map((x) => assertIntegerId(x, 'asset type id')))];
   if (!uniqueTypeIds.length) throw new AppError(400, 'ASSET_TYPES_REQUIRED', 'Select at least one asset type.');
-  const typeIn = uniqueTypeIds.map(() => '?').join(',');
+  const typeIn = inPlaceholders(uniqueTypeIds);
   const [typeRows] = await conn.query(
     `SELECT id FROM asset_types WHERE id IN (${typeIn})${typeScope.sql}`,
     [...uniqueTypeIds, ...typeScope.params],
@@ -177,7 +176,7 @@ async function validateRuleInputs(actor, conn, { assetTypeIds, triggerType, trig
   if (!Array.isArray(recipientIds) || recipientIds.length === 0) throw new AppError(400, 'RECIPIENTS_REQUIRED', 'Select at least one recipient.');
   const uniqueIds = [...new Set(recipientIds.map((x) => assertIntegerId(x, 'recipient id')))];
   const [recRows] = await conn.query(
-    `SELECT id FROM email_recipients WHERE id IN (${uniqueIds.map(() => '?').join(',')})${typeScope.sql}`,
+    `SELECT id FROM email_recipients WHERE id IN (${inPlaceholders(uniqueIds)})${typeScope.sql}`,
     [...uniqueIds, ...typeScope.params],
   );
   if (recRows.length !== uniqueIds.length) throw new AppError(400, 'RECIPIENT_INVALID', 'One or more recipients do not belong to you.');

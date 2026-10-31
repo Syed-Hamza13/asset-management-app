@@ -198,7 +198,7 @@ export function Users() {
                 </div>
                 <div className="mt-1 text-xs text-slate-400">
                   {u.displayName && <span className="mr-2">{u.email}</span>}
-                  {u.role === "admin" ? "Full access to everything" : `${u.permissions.length} capability${u.permissions.length === 1 ? "" : "ies"} granted`}
+                  {u.role === "admin" ? "Full access to everything" : `${u.permissions.length} capabilit${u.permissions.length === 1 ? "y" : "ies"} granted`}
                 </div>
               </div>
               <div className="flex flex-wrap gap-2">

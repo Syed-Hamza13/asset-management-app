@@ -9,5 +9,5 @@ export const create = asyncHandler(async (req, res) => res.status(201).json({ su
 export const get = asyncHandler(async (req, res) => res.json({ success: true, data: await getAsset(req.user, req.params.publicId) }));
 export const update = asyncHandler(async (req, res) => res.json({ success: true, data: await updateAsset(req.user, req.params.publicId, bodySchema.parse(req.body).values) }));
 export const remove = asyncHandler(async (req, res) => { await deleteAsset(req.user, req.params.publicId); res.json({ success: true }); });
-export const bulkUpdate = asyncHandler(async (req, res) => res.json({ success: true, data: await bulkUpdateAssets(req.user, req.params.assetTypeId, bulkSchema.parse(req.body).publicIds, bulkSchema.parse(req.body).values || {}) }));
+export const bulkUpdate = asyncHandler(async (req, res) => { const { publicIds, values } = bulkSchema.parse(req.body); res.json({ success: true, data: await bulkUpdateAssets(req.user, req.params.assetTypeId, publicIds, values || {}) }); });
 export const bulkRemove = asyncHandler(async (req, res) => res.json({ success: true, data: await bulkDeleteAssets(req.user, req.params.assetTypeId, bulkSchema.parse(req.body).publicIds) }));

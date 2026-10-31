@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { asyncHandler } from '../../utils/errors.js';
+import { EMAIL_RE } from '../../utils/validation.js';
 import { getSmtpConfig, updateSmtpConfig, testConnection, sendTestEmail } from './service.js';
 
 const updateSchema = z.object({
@@ -8,7 +9,7 @@ const updateSchema = z.object({
   secure: z.boolean().optional(),
   username: z.string().trim().max(255).optional(),
   password: z.string().max(500).nullable().optional(),
-  fromEmail: z.string().trim().max(255).refine((v) => v === '' || /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v), { message: 'Invalid from email' }).optional(),
+  fromEmail: z.string().trim().max(255).refine((v) => v === '' || EMAIL_RE.test(v), { message: 'Invalid from email' }).optional(),
   fromName: z.string().trim().max(255).optional(),
   replyTo: z.string().trim().max(255).optional(),
   enabled: z.boolean().optional(),
