@@ -11,13 +11,13 @@ services:
     # `"userland-proxy": false` in /etc/docker/daemon.json on the host. Verify the
     # "IP the server sees for you" line on a second device before switching on.
     ports:
-      - "4000:4000"
+      - "8073:8073"
 
     environment:
       NODE_ENV: production
       HOST: 0.0.0.0
-      PORT: 4000
-      FRONTEND_URL: http://localhost:4000
+      PORT: 8073
+      FRONTEND_URL: http://localhost:8073 # or ip address of the host machine
 
       DB_HOST: your_mysql_host
       DB_PORT: 3306
