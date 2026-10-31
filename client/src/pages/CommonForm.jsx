@@ -36,68 +36,80 @@ function FormFields({ fields, allFields, onChange, onSave }) {
           {local.map((field, index) => (
             <div
               key={field.id}
-              className="flex flex-wrap items-center gap-3 px-4 py-4"
+              className="flex flex-wrap items-center gap-x-3 gap-y-2 px-4 py-3 sm:py-4"
             >
-              <div className="w-8 text-center text-xs text-slate-400">
+              <div className="w-6 text-center text-xs text-slate-400 sm:w-8">
                 {index + 1}
               </div>
-              <div className="min-w-[170px] flex-1">
+              <div className="min-w-0 flex-1 sm:min-w-[170px]">
                 <div className="font-medium">{field.name}</div>
                 <div className="text-xs text-slate-500">
                   {field.type}
                   {field.dropdown_id ? ` · dropdown #${field.dropdown_id}` : ""}
                 </div>
               </div>
-              <label className="flex items-center gap-2 text-sm">
-                <input
-                  type="checkbox"
-                  checked={Boolean(field.required)}
-                  onChange={(event) =>
-                    setLocal(
-                      local.map((item) =>
-                        item.id === field.id
-                          ? { ...item, required: event.target.checked }
-                          : item,
-                      ),
-                    )
-                  }
-                />{" "}
-                Required
-              </label>
-              <label className="flex items-center gap-2 text-sm">
-                <input
-                  type="checkbox"
-                  checked={field.showInList !== false}
-                  disabled={field.type === "quantity"}
-                  onChange={(event) =>
-                    setLocal(
-                      local.map((item) =>
-                        item.id === field.id
-                          ? { ...item, showInList: event.target.checked }
-                          : item,
-                      ),
-                    )
-                  }
-                />{" "}
-                {field.type === "quantity" ? "Not a list column" : "Show in Asset List"}
-              </label>
-              <div className="flex gap-1">
+              {/* On a phone the two flags move below the name and the arrows stay
+                  beside it: order-3 + w-full reflows this row without changing the
+                  desktop order or the gap between the flags. */}
+              <div className="order-3 flex w-full flex-wrap items-center gap-x-3 gap-y-1 sm:order-none sm:w-auto">
+                <label className="flex items-center gap-2 text-sm">
+                  <input
+                    type="checkbox"
+                    checked={Boolean(field.required)}
+                    onChange={(event) =>
+                      setLocal(
+                        local.map((item) =>
+                          item.id === field.id
+                            ? { ...item, required: event.target.checked }
+                            : item,
+                        ),
+                      )
+                    }
+                  />{" "}
+                  Required
+                </label>
+                <label className="flex items-center gap-2 text-sm">
+                  <input
+                    type="checkbox"
+                    checked={field.showInList !== false}
+                    disabled={field.type === "quantity"}
+                    onChange={(event) =>
+                      setLocal(
+                        local.map((item) =>
+                          item.id === field.id
+                            ? { ...item, showInList: event.target.checked }
+                            : item,
+                        ),
+                      )
+                    }
+                  />{" "}
+                  {field.type === "quantity" ? "Not a list column" : "Show in Asset List"}
+                </label>
+              </div>
+              <div className="flex items-center gap-1">
                 <Button
                   type="button"
+                  size="sm"
                   variant="ghost"
+                  aria-label="Move up"
+                  className="min-w-10 px-2 sm:min-w-0"
                   onClick={() => move(index, -1)}
                 >
                   ↑
                 </Button>
                 <Button
                   type="button"
+                  size="sm"
                   variant="ghost"
+                  aria-label="Move down"
+                  className="min-w-10 px-2 sm:min-w-0"
                   onClick={() => move(index, 1)}
                 >
                   ↓
                 </Button>
                 <Button
                   type="button"
+                  size="sm"
                   variant="ghost"
                   onClick={() =>
                     setLocal(local.filter((item) => item.id !== field.id))
@@ -186,7 +198,7 @@ export function CommonForm() {
     <div>
       <div className="mb-6 flex items-start justify-between gap-3">
         <div>
-          <h2 className="text-xl font-bold">Common Form</h2>
+          <h2 className="page-title text-xl font-bold">Common Form</h2>
           <p className="mt-1 text-sm text-slate-500">
             Fields selected here become available automatically when creating an
             asset of any type.
@@ -327,7 +339,7 @@ function CopyToUsersModal({ open, onClose, fieldCount }) {
             ))}
           </div>
         )}
-        <div className="flex justify-end gap-2">
+        <div className="dialog-actions flex justify-end gap-2">
           <Button variant="secondary" onClick={onClose}>
             {results ? "Done" : "Cancel"}
           </Button>

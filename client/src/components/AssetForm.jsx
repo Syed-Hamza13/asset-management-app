@@ -119,7 +119,9 @@ export function AssetForm({
       />
       <div className="flex flex-wrap items-center justify-end gap-x-4 gap-y-2 pt-2">
         {footerExtra}
-        <div className="ml-auto flex gap-2">
+        {/* .dialog-actions stacks these full width on a phone - "Save Bluetooth
+            Earbuds" is far too wide to share a half row with Cancel. */}
+        <div className="dialog-actions ml-auto flex gap-2">
           <Button variant="secondary" type="button" onClick={onCancel}>
             Cancel
           </Button>

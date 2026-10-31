@@ -163,7 +163,7 @@ function TemplatesTab() {
               )}
             </div>
             <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={editing.isActive} onChange={(e) => setEditing({ ...editing, isActive: e.target.checked })} /> Active</label>
-            <div className="flex justify-end gap-2"><Button type="button" variant="secondary" onClick={() => setEditing(null)}>Cancel</Button><Button>Save template</Button></div>
+            <div className="dialog-actions flex justify-end gap-2"><Button type="button" variant="secondary" onClick={() => setEditing(null)}>Cancel</Button><Button>Save template</Button></div>
           </form>
         )}
       </Modal>
@@ -210,7 +210,7 @@ function RecipientsTab() {
             <Input label="Name" value={editing.name} onChange={(e) => setEditing({ ...editing, name: e.target.value })} />
             <Input label="Email" type="email" value={editing.email} onChange={(e) => setEditing({ ...editing, email: e.target.value })} required />
             <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={editing.isActive} onChange={(e) => setEditing({ ...editing, isActive: e.target.checked })} /> Active</label>
-            <div className="flex justify-end gap-2"><Button type="button" variant="secondary" onClick={() => setEditing(null)}>Cancel</Button><Button>Save recipient</Button></div>
+            <div className="dialog-actions flex justify-end gap-2"><Button type="button" variant="secondary" onClick={() => setEditing(null)}>Cancel</Button><Button>Save recipient</Button></div>
           </form>
         )}
       </Modal>
@@ -353,7 +353,7 @@ function RulesTab() {
               )}
             </div>
             <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={editing.isActive} onChange={(e) => setEditing({ ...editing, isActive: e.target.checked })} /> Active</label>
-            <div className="flex justify-end gap-2"><Button type="button" variant="secondary" onClick={() => setEditing(null)}>Cancel</Button><Button disabled={!editing.recipientIds.length}>Save rule</Button></div>
+            <div className="dialog-actions flex justify-end gap-2"><Button type="button" variant="secondary" onClick={() => setEditing(null)}>Cancel</Button><Button disabled={!editing.recipientIds.length}>Save rule</Button></div>
           </form>
         )}
       </Modal>
@@ -365,7 +365,7 @@ export function EmailNotifications() {
   const [tab, setTab] = useState("templates");
   return (
     <div className="mx-auto max-w-4xl">
-      <div className="mb-6"><h2 className="text-2xl font-bold">Email Notifications</h2><p className="mt-1 text-sm text-slate-500">Create templates, manage recipients, and set rules that email when assets change.</p></div>
+      <div className="mb-6"><h2 className="page-title text-2xl font-bold">Email Notifications</h2><p className="mt-1 text-sm text-slate-500">Create templates, manage recipients, and set rules that email when assets change.</p></div>
       <Tabs tab={tab} setTab={setTab} />
       {tab === "templates" && <TemplatesTab />}
       {tab === "recipients" && <RecipientsTab />}

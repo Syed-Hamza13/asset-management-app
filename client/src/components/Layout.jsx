@@ -70,7 +70,11 @@ export function Layout() {
       <div className="lg:pl-64">
         <header className="sticky top-0 z-20 border-b border-slate-200 bg-white/95 backdrop-blur lg:hidden">
           <div className="flex items-center justify-between gap-3 px-4 py-3">
-            <div className="flex min-w-0 items-center gap-2 truncate text-base font-bold">{appIcon && <img src={appIcon} alt="" className="h-7 w-7 rounded-md object-cover" />}{title}</div>
+            {/* An <h1>, not a div: below lg: this is the page's only visible title (the in-page
+               .page-title <h2> is hidden to avoid printing the name twice), and a screen reader
+               still needs a heading to announce. Preflight resets h1 styling, so the classes
+               below keep it pixel-identical to the div it replaced. */}
+            <h1 className="flex min-w-0 items-center gap-2 truncate text-base font-bold">{appIcon && <img src={appIcon} alt="" className="h-7 w-7 rounded-md object-cover" />}{title}</h1>
             <div className="flex shrink-0 items-center gap-3">
               <NotificationBell align="right" />
               <button onClick={logout} className="text-sm font-semibold text-slate-600">

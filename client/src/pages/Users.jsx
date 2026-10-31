@@ -175,7 +175,7 @@ export function Users() {
     <div className="mx-auto max-w-5xl">
       <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h2 className="text-xl font-bold">Users</h2>
+          <h2 className="page-title text-xl font-bold">Users</h2>
           <p className="mt-1 text-sm text-slate-500">
             Create accounts, grant capabilities, deactivate or reset passwords.
           </p>
@@ -201,7 +201,7 @@ export function Users() {
                   {u.role === "admin" ? "Full access to everything" : `${u.permissions.length} capabilit${u.permissions.length === 1 ? "y" : "ies"} granted`}
                 </div>
               </div>
-              <div className="flex flex-wrap gap-2">
+              <div className="action-bar flex flex-wrap gap-2">
                 <Button variant="secondary" onClick={() => { setNameFor(u); setDisplayNameDraft(u.displayName || ""); setError(""); }}>Display name</Button>
                 {u.role !== "admin" && (
                   <Button variant="secondary" onClick={() => { setPermsFor(u); setPermsDraft(u.permissions); setError(""); }}>Permissions</Button>
@@ -240,7 +240,7 @@ export function Users() {
           {form.role === "user" && (
             <PermissionChecklist value={form.permissions} onChange={(permissions) => setForm({ ...form, permissions })} />
           )}
-          <div className="flex justify-end gap-2">
+          <div className="dialog-actions flex justify-end gap-2">
             <Button variant="secondary" type="button" onClick={() => setCreateOpen(false)}>Cancel</Button>
             <Button loading={saving}>Create User</Button>
           </div>
@@ -251,7 +251,7 @@ export function Users() {
         <form onSubmit={savePermissions} className="space-y-4">
           {error && <Alert>{error}</Alert>}
           <PermissionChecklist value={permsDraft} onChange={setPermsDraft} />
-          <div className="flex justify-end gap-2">
+          <div className="dialog-actions flex justify-end gap-2">
             <Button variant="secondary" type="button" onClick={() => setPermsFor(null)}>Cancel</Button>
             <Button loading={saving}>Save Permissions</Button>
           </div>
@@ -262,7 +262,7 @@ export function Users() {
         <form onSubmit={doResetPassword} className="space-y-4">
           {error && <Alert>{error}</Alert>}
           <Input label="New Temporary Password" type="text" hint="At least 10 characters. The user must change it at next login." value={newPassword} onChange={(e) => setNewPassword(e.target.value)} required minLength={10} autoFocus />
-          <div className="flex justify-end gap-2">
+          <div className="dialog-actions flex justify-end gap-2">
             <Button variant="secondary" type="button" onClick={() => setResetFor(null)}>Cancel</Button>
             <Button loading={saving}>Reset Password</Button>
           </div>
@@ -273,7 +273,7 @@ export function Users() {
         <form onSubmit={saveDisplayName} className="space-y-4">
           {error && <Alert>{error}</Alert>}
           <Input label="Display Name" hint="Leave empty to fall back to the email address. Max 100 characters." value={displayNameDraft} onChange={(e) => setDisplayNameDraft(e.target.value)} maxLength={100} autoFocus />
-          <div className="flex justify-end gap-2">
+          <div className="dialog-actions flex justify-end gap-2">
             <Button variant="secondary" type="button" onClick={() => setNameFor(null)}>Cancel</Button>
             <Button loading={saving}>Save Name</Button>
           </div>

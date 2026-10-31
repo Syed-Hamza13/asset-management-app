@@ -13,7 +13,7 @@ export function Settings() {
   const { can, user, isAdmin } = useAuth();
 
   return <div className="max-w-xl space-y-6">
-    <div><h2 className="text-xl font-bold">Settings & Security</h2><p className="mt-1 text-sm text-slate-500">Manage your account and application branding.</p></div>
+    <div><h2 className="page-title text-xl font-bold">Settings & Security</h2><p className="mt-1 text-sm text-slate-500">Manage your account and application branding.</p></div>
     {user?.mustChangePassword && <Alert>You must change your password before continuing. Use your temporary password as the current password below.</Alert>}
     {can("branding.manage") && <BrandingCard />}
     {isAdmin && <TurnstileCard />}

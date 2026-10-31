@@ -57,7 +57,7 @@ export function AssetDetail() {
             {asset.publicId}
           </p>
         </div>
-        <div className="flex gap-2">
+        <div className="action-bar flex gap-2">
           {can("assets.edit_own") && (
             <Link to={`/assets/${publicId}/edit`}>
               <Button>Edit</Button>

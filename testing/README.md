@@ -4,8 +4,9 @@ Written **before** the modularisation refactor, so that the refactor can be prov
 behaviour-neutral: the same suite must be green before and after, with no test
 weakened to make it pass.
 
-Everything is for **Firefox** (`playwright.config.js` has exactly one project),
-because that is the browser you run. Watch it live:
+Everything is for **Firefox**, because that is the browser you run. Two projects, same
+browser: `firefox` (desktop, 1280x720) and `firefox-phone` (360x800, `e2e/mobile/**` only).
+Watch it live:
 
 ```bash
 cd testing
@@ -15,6 +16,8 @@ npm run test:unit             # 21 node:test cases, no browser, no network
 npm run test:e2e:headed       # the Firefox windows you can watch
 npm run test:e2e              # same specs, headless (used for the baseline runs)
 npm run test:all              # unit + e2e
+npx playwright test --project=firefox-phone   # the phone layout locks only
+node scripts/mobile-audit.mjs 360 800 --dialogs  # diagnostic: measures + screenshots every page
 ```
 
 Before running the e2e suite:

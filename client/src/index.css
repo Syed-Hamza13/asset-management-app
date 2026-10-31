@@ -2,8 +2,13 @@
 
 :root { font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
 body { margin: 0; min-width: 320px; color: #0f172a; overflow-x: hidden; }
-button, input, textarea, select { max-width: 100%; }
-button, input, textarea, select { font: inherit; }
+
+/* Form controls never inherit the page font on their own, but the reset has to stay
+   inside @layer base: written unlayered, the `font` shorthand also carries font-size
+   and it beats every Tailwind text-* utility, so a `text-sm` button rendered at 16px. */
+@layer base {
+  button, input, textarea, select { max-width: 100%; font: inherit; }
+}
 
 @keyframes spin { to { transform: rotate(360deg); } }
 .spinner { width: 18px; height: 18px; border: 2px solid currentColor; border-right-color: transparent; border-radius: 999px; animation: spin .7s linear infinite; }
@@ -14,3 +19,71 @@ button, input, textarea, select { font: inherit; }
 .row-hover > tr > td { transition: background-color .12s ease, box-shadow .12s ease; }
 .row-hover > tr:hover > td { background-color: var(--color-slate-100); }
 .row-hover > tr:hover > td:first-child:not(:only-child) { box-shadow: inset 3px 0 0 0 var(--color-slate-900); }
+
+/* The compact header (Layout.jsx, `lg:hidden`) already prints the page name, so below lg:
+   the in-page <h2> repeats it - "Assets" under "Assets", "Reports" under "Reports". Only the
+   title goes; the description line under it is not a duplicate and stays. The header's name is
+   an <h1>, so the page keeps exactly one heading either way. Above lg: the header is gone and
+   the sidebar shows no page name, so the <h2> is the only title and it stays visible. */
+@media (max-width: 1023.98px) {
+  .page-title { display: none; }
+}
+
+/* Action bars (a row of Buttons): on a phone the actions become two equal columns
+   instead of a ragged, right-aligned staircase of different widths. The element keeps
+   its own flex/gap classes, and above sm: nothing is overridden at all, so the
+   desktop layout stays exactly as it was. */
+@media (max-width: 639.98px) {
+  /* A wrapped action row is a flex item, so it shrinks to its content: on the asset
+     page that left a 137px island of buttons under a 360px-wide title. Taking the
+     whole line is what the two-column children below already assume. */
+  .action-bar { width: 100%; }
+
+  /* min-content, not 0: a label too long for half the row takes the whole line
+     instead of being squeezed until its text spills over the button edge. */
+  .action-bar > * { flex: 1 1 calc(50% - 5px); min-width: min-content; }
+  /* An <a> never stretches its inline-flex child, so a Link-wrapped Button would sit
+     at its own width inside a half-width cell while its plain Button siblings filled
+     theirs. Making the anchor a flex container keeps the row even. */
+  .action-bar > a { display: flex; }
+  .action-bar > a > button { flex: 1 1 auto; }
+
+  /* The asset-type toolbar carries eight actions. As two columns that is four rows
+     and ~140px of screen before the table starts, so on a phone this one bar keeps
+     every action on a single line and the line swipes sideways instead (Buttons are
+     already `whitespace-nowrap`, so a label can never fold here). */
+  .action-bar.action-bar-scroll {
+    flex-wrap: nowrap;
+    /* flex-start, not the bar's own justify-end: an overflowing flex row aligned to
+       the end pushes its first items into the unreachable left scroll dead zone. */
+    justify-content: flex-start;
+    overflow-x: auto;
+    /* A swipe strip is not a scrollbar strip - the button cut off at the right edge
+       is the affordance - and a classic scrollbar would add height to the row. */
+    scrollbar-width: none;
+    /* The scroller clips its own box, so leave room for the focus outline. */
+    padding-top: 2px;
+    padding-bottom: 2px;
+  }
+  /* Content width, not the 50% column width: each button is exactly as wide as its
+     label needs, and the row scrolls to reach the rest. */
+  .action-bar.action-bar-scroll > * { flex: 0 0 auto; }
+
+  /* Dialog footers stack, primary action first (the DOM keeps Cancel before Save,
+     which is the reading order a keyboard/screen-reader expects). */
+  .dialog-actions { width: 100%; flex-direction: column-reverse; }
+  .dialog-actions > * { width: 100%; }
+
+  /* Data tables already scroll sideways on a phone, so the columns should be as
+     narrow as their content instead of paying Tailwind's px-5 on both sides of every
+     cell and wrapping "Current Date (Editable)" over three lines. Written unlayered
+     on purpose: it has to beat the px-* utilities, and the 639.98px cap keeps every
+     desktop table pixel-identical. */
+  table th, table td { padding-left: .75rem; padding-right: .75rem; }
+  table td { padding-top: .625rem; padding-bottom: .625rem; }
+  table th { white-space: nowrap; }
+
+  /* Field-editor rows (Quick Entry in Settings): the label input takes the whole
+     line so the type picker, Required and Remove are not crushed beside it. */
+  .field-row > :first-child { flex: 1 1 100%; }
+}

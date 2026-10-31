@@ -36,11 +36,11 @@ test.describe('common form', () => {
         )
         .map((row) => ({
           name: row.querySelector(':scope > div div.font-medium')?.textContent.trim() ?? '',
-          checkboxes: Array.from(row.querySelectorAll(':scope > label input[type="checkbox"]')).map(
+          checkboxes: Array.from(row.querySelectorAll('label input[type="checkbox"]')).map(
             (input) => input.checked,
           ),
           listLabel:
-            Array.from(row.querySelectorAll(':scope > label'))
+            Array.from(row.querySelectorAll('label'))
               .map((label) => label.textContent.trim())
               .find((text) => text !== 'Required') ?? '',
         })),
@@ -61,8 +61,43 @@ test.describe('common form', () => {
     await expect(page.getByRole('button', { name: 'Save common form' })).toBeVisible();
   });
 
-  test('the add-field picker offers the fields that are not on the form yet', async ({ page, request }) => {
-    const selectedFields = await apiGet(request, '/common-form');
+  test('a desktop row keeps name, flags and actions on one line', async ({ page, request }) => {
+    const fields = await apiGet(request, '/common-form');
+    await page.setViewportSize({ width: 1280, height: 900 });
+    await page.goto('/common-form');
+    await expect(page.getByRole('button', { name: 'Remove', exact: true })).toHaveCount(fields.length);
+    // The phone layout moves the two flags below the name; at 1280px nothing may
+    // have moved, so every piece of a row still shares one line.
+    const lines = await page.evaluate(() =>
+      Array.from(document.querySelectorAll('main div.flex.flex-wrap'))
+        .filter((row) =>
+          Array.from(row.querySelectorAll(':scope > div button')).some(
+            (button) => button.textContent.trim() === 'Remove',
+          ),
+        )
+        .map((row) => {
+          const top = (el) => Math.round(el.getBoundingClientRect().top);
+          const remove = Array.from(row.querySelectorAll('button')).find(
+            (button) => button.textContent.trim() === 'Remove',
+          );
+          const flags = Array.from(row.querySelectorAll('label'));
+          return {
+            name: top(row.querySelector(':scope > div div.font-medium')),
+            firstFlag: top(flags[0]),
+            lastFlag: top(flags[flags.length - 1]),
+            remove: top(remove),
+          };
+        }),
+    );
+    expect(lines).toHaveLength(fields.length);
+    for (const line of lines) {
+      const spread = Math.max(line.name, line.firstFlag, line.lastFlag, line.remove) -
+        Math.min(line.name, line.firstFlag, line.lastFlag, line.remove);
+      expect(spread, `row tops ${JSON.stringify(line)} must share one line`).toBeLessThan(20);
+    }
+  });
+
+  test('the add-field picker offers the fields that are not on the form yet', async ({ page, request }) => {    const selectedFields = await apiGet(request, '/common-form');
     const allFields = await apiGet(request, '/fields');
     await page.goto('/common-form');
     const picker = page.locator('select').filter({ hasText: 'Add field to common form' });

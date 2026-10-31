@@ -88,7 +88,7 @@ export function ShareTypeModal({ open, assetTypeId, typeName, viewerId, onClose,
             ))}
           </Card>
         )}
-        <div className="flex justify-end gap-2">
+        <div className="dialog-actions flex justify-end gap-2">
           <Button variant="secondary" onClick={onClose}>
             Cancel
           </Button>

@@ -235,7 +235,7 @@ export function AssetType() {
             {type.asset_count} asset{Number(type.asset_count) === 1 ? "" : "s"}
           </span>
         </div>
-        <div className="flex flex-wrap items-center justify-end gap-1.5">
+        <div className="action-bar action-bar-scroll flex flex-wrap items-center justify-end gap-1.5">
           {can("assets.create_own") && (
             <Link to={`/asset-types/${id}/new`}>
               <Button size="sm">+ Add Asset</Button>
@@ -396,7 +396,7 @@ export function AssetType() {
             <input type="checkbox" checked={deleteConfirmed} onChange={(event) => setDeleteConfirmed(event.target.checked)} />
             I understand this operation cannot be undone.
           </label>
-          <div className="flex justify-end gap-2">
+          <div className="dialog-actions flex justify-end gap-2">
             <Button type="button" variant="secondary" onClick={() => { setDeleteOpen(false); setDeleteConfirmed(false); }}>Cancel</Button>
             <Button variant="danger" loading={deleteLoading} disabled={!deleteConfirmed}>Delete asset type</Button>
           </div>

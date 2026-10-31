@@ -227,10 +227,12 @@ test.describe('email notifications', () => {
     const dialog = modal(page, 'New Rule');
     await expect(dialog).toBeVisible();
 
-    const typeLabels = await dialog
-      .locator('div.grid.max-h-40 label span.truncate')
-      .evaluateAll((els) => els.map((el) => el.textContent));
-    expect(typeLabels).toEqual(types.map((type) => type.name));
+    // A retrying read, not a one-shot evaluateAll: the picker list is filled by a
+    // request the dialog makes after it opens, so a single snapshot can settle on
+    // the pre-render DOM (BUG-LOG #14, fourth sighting of this race).
+    await expect(
+      dialog.locator('div.grid.max-h-40 label span.truncate'),
+    ).toHaveText(types.map((type) => type.name));
     await expect(dialog.getByText('Select at least one asset type.', { exact: true })).toBeVisible();
 
     const trigger = await fieldIn(dialog, 'Trigger');

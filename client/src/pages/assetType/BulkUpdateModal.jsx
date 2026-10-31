@@ -63,7 +63,7 @@ export function BulkUpdateModal({ open, count, fields, onClose, onSubmit, onSucc
             <Input label="Value" type={field?.type === "number" ? "number" : "text"} value={value} onChange={(event) => setValue(event.target.value)} required />
           )
         )}
-        <div className="flex justify-end gap-2">
+        <div className="dialog-actions flex justify-end gap-2">
           <Button type="button" variant="secondary" onClick={onClose}>Cancel</Button>
           <Button loading={loading} disabled={!fieldKey}>Update assets</Button>
         </div>

@@ -31,7 +31,17 @@ export default defineConfig({
     actionTimeout: 12_000,
   },
   projects: [
-    // One project only: add --headed to watch the same specs run in a visible Firefox.
-    { name: 'firefox', use: { ...devices['Desktop Firefox'] } },
+    // The desktop specs are the behaviour lock; e2e/mobile is measured at phone size.
+    {
+      name: 'firefox',
+      use: { ...devices['Desktop Firefox'] },
+      testIgnore: ['e2e/mobile/**'],
+    },
+    {
+      // Same browser, phone viewport: this is what the 360px layout rules assert.
+      name: 'firefox-phone',
+      use: { ...devices['Desktop Firefox'], viewport: { width: 360, height: 800 } },
+      testMatch: ['e2e/mobile/**/*.spec.js'],
+    },
   ],
 });

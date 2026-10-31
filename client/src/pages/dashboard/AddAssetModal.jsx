@@ -218,7 +218,7 @@ export function AddAssetModal({
                 )}
               </div>
             )}
-            <div className="flex justify-end gap-2">
+            <div className="dialog-actions flex justify-end gap-2">
               <Button
                 variant="secondary"
                 type="button"

@@ -56,14 +56,14 @@ export function EmailHistory() {
   return (
     <div className="mx-auto max-w-5xl">
       <div className="mb-6">
-        <h2 className="text-2xl font-bold">Email History</h2>
+        <h2 className="page-title text-2xl font-bold">Email History</h2>
         <p className="mt-1 text-sm text-slate-500">
           Every notification email queued from your asset activity.
         </p>
       </div>
 
       <div className="mb-4 flex flex-wrap items-end gap-3">
-        <div className="w-48">
+        <div className="min-w-[150px] flex-1 sm:w-48 sm:flex-none">
           <Select hideBlank label="Status" value={status} onChange={(e) => setStatus(e.target.value)} options={STATUSES} />
         </div>
         {isAdmin && (
@@ -72,8 +72,8 @@ export function EmailHistory() {
             <span>All users</span>
           </label>
         )}
-        <div className="ml-auto pb-1.5">
-          <Button variant="secondary" onClick={load} disabled={loading}>Refresh</Button>
+        <div className="w-full pb-1.5 sm:ml-auto sm:w-auto">
+          <Button variant="secondary" className="w-full sm:w-auto" onClick={load} disabled={loading}>Refresh</Button>
         </div>
       </div>
 

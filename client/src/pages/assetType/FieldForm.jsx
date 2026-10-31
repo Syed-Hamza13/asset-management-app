@@ -25,18 +25,21 @@ export function FieldForm({ fields, onSave }) {
           {local.map((f, i) => (
             <div
               key={f.id}
-              className="flex flex-wrap items-center gap-3 px-4 py-4"
+              className="flex flex-wrap items-center gap-x-3 gap-y-2 px-4 py-3 sm:py-4"
             >
-              <div className="w-8 text-center text-xs text-slate-400">
+              <div className="w-6 text-center text-xs text-slate-400 sm:w-8">
                 {i + 1}
               </div>
-              <div className="min-w-[160px] flex-1">
+              <div className="min-w-0 flex-1 sm:min-w-[160px]">
                 <div className="font-medium">{f.name}</div>
                 <div className="text-xs text-slate-500">
                   {f.type}
                   {f.dropdownId ? ` · dropdown #${f.dropdownId}` : ""}
                 </div>
               </div>
+              {/* Same reflow as the common-form rows: the two flags move under the
+                  field name on a phone and stay inline from sm: upwards. */}
+              <div className="order-3 flex w-full flex-wrap items-center gap-x-3 gap-y-1 sm:order-none sm:w-auto">
               <label className="flex items-center gap-2 text-sm">
                 <input
                   type="checkbox"
@@ -69,15 +72,17 @@ export function FieldForm({ fields, onSave }) {
                 />
                 Show in Asset List
               </label>
+              </div>
               <div className="flex gap-1">
-                <Button variant="ghost" onClick={() => move(i, -1)}>
+                <Button variant="ghost" size="sm" aria-label="Move up" className="min-w-10 px-2 sm:min-w-0" onClick={() => move(i, -1)}>
                   ↑
                 </Button>
-                <Button variant="ghost" onClick={() => move(i, 1)}>
+                <Button variant="ghost" size="sm" aria-label="Move down" className="min-w-10 px-2 sm:min-w-0" onClick={() => move(i, 1)}>
                   ↓
                 </Button>
                 <Button
                   variant="ghost"
+                  size="sm"
                   onClick={() => setLocal(local.filter((x) => x.id !== f.id))}
                 >
                   Remove

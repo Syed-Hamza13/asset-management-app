@@ -29,7 +29,13 @@ test.describe('asset type page', () => {
     }
 
     const listed = first.form.filter((field) => field.showInList).map((field) => field.name);
-    const headers = await textOf(page.locator('main table thead th'));
+    // Retried read: the table renders after two requests, and a one-shot
+    // evaluateAll can settle on the pre-render DOM (BUG-LOG #14 family).
+    const headerText = () => textOf(page.locator('main table thead th'));
+    await expect
+      .poll(headerText, { timeout: 15_000, message: 'table headers never rendered' })
+      .toEqual(listed);
+    const headers = await headerText();
     expect(headers).toEqual(listed);
     expect(new Set(headers).size, 'duplicate column headers').toBe(headers.length);
 

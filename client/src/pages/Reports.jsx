@@ -224,7 +224,7 @@ export function Reports() {
     <div>
       <div className="mb-6 flex flex-wrap items-center gap-3">
         <div className="w-full sm:mr-auto sm:w-auto">
-          <h2 className="text-2xl font-bold">Reports</h2>
+          <h2 className="page-title text-2xl font-bold">Reports</h2>
           <p className="mt-1 text-sm text-slate-500">
             View and analyze assets across every asset type.
           </p>

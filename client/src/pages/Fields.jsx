@@ -158,9 +158,9 @@ export function Fields() {
   }
   return (
     <div>
-      <div className="mb-6 flex items-center justify-between">
-        <div>
-          <h2 className="text-xl font-bold">Field Definitions</h2>
+      <div className="mb-6 flex flex-wrap items-start justify-between gap-3">
+        <div className="min-w-0 flex-1">
+          <h2 className="page-title text-xl font-bold">Field Definitions</h2>
           <p className="mt-1 text-sm text-slate-500">
             {isAdmin
               ? "Reusable fields for your asset forms. Every user's fields are listed here — use the Owner column to tell identical names apart."
@@ -168,6 +168,7 @@ export function Fields() {
           </p>
         </div>
         <Button
+          className="shrink-0"
           onClick={() => {
             setEdit(null);
             setForm(blank);
