@@ -647,10 +647,19 @@ would show 404 after you sign out. If the server has enforcement switched off,
 it says the list "is saved but not applied". If some saved lines cannot be
 read, it lists them — those lines are ignored, not applied.
 
-The card also warns about Docker: run from a container behind a published port,
-every visitor can look like the same gateway address, so a per-device rule will
-not work. Check the "IP the server sees for you" value from a second device
-before relying on it.
+The card also warns that, run from a container behind a published port, every
+visitor can look like the same gateway address, so a per-device rule will not
+work. Check the "IP the server sees for you" value from a second device before
+relying on the list.
+
+When the app sits behind an nginx proxy, that line shows the **proxy machine's**
+address and the list then admits the whole network. The server operator fixes it
+with one environment variable, `IP_ACCESS_TRUSTED_PROXIES`, which lists the proxy
+addresses the app is allowed to believe (see the operations document). Once it is
+set, "IP the server sees for you" shows your own address again and the list works
+per device or per network — but the entries you approved while it was showing the
+proxy address stop matching, so add your own address before that change is made,
+otherwise you will get the 404 page yourself.
 
 ## SMTP (email delivery)
 

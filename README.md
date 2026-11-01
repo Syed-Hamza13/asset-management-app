@@ -28,7 +28,7 @@ A production-ready asset management system for tracking inventory, asset metadat
 asset-management-app/
 ├── Dockerfile
 ├── .dockerignore
-├── docker-compose.yml
+├── docker-compose.example.yaml
 ├── .gitignore
 ├── README.md
 ├── package.json
@@ -168,7 +168,7 @@ docker build \
 
 ### 2) Configure Compose values
 
-Update `docker-compose.yml` with your real values:
+Copy `docker-compose.example.yaml` to `docker-compose.yml` (the real file is gitignored) and put your values in it:
 
 ```yaml
 services:
@@ -178,13 +178,13 @@ services:
     restart: unless-stopped
 
     ports:
-      - "4000:3000"
+      - "8073:8073"
 
     environment:
       NODE_ENV: production
       HOST: 0.0.0.0
-      PORT: 3000
-      FRONTEND_URL: http://localhost:4000
+      PORT: 8073
+      FRONTEND_URL: http://localhost:8073 # exactly what users type: or the host machine's LAN IP / https domain
 
       DB_HOST: your_db_host # eg. localhost
       DB_PORT: 3306
@@ -204,6 +204,10 @@ services:
 
       # "false" disables the Settings IP allowlist (break-glass after a lockout).
       IP_ACCESS_ENFORCE: "true"
+      # The proxy addresses this app may believe for the real visitor IP. Empty = the
+      # app is reached directly and the allowlist compares the TCP socket address.
+      # Behind nginx list the proxy machine, plus 172.17.0.1 for the Docker bridge:
+      IP_ACCESS_TRUSTED_PROXIES: "your_nginx_ip,172.17.0.1"
 ```
 
 ### 3) Start the container
@@ -221,7 +225,7 @@ docker logs -f asset-management-app
 ### 5) Health check
 
 ```bash
-curl http://localhost:4000/health
+curl http://localhost:8073/health
 ```
 
 Expected response:
@@ -255,15 +259,13 @@ Admins can limit the app to specific IP addresses or networks from **Settings �
 
 - Accepted entries: a single address (`192.168.1.23`), a CIDR block (`192.168.1.0/24`), a from-to range (`10.0.0.5-10.0.0.40`) or a trailing wildcard (`192.168.7.*`). One per line, or comma/semicolon separated. Maximum 200 entries.
 - **A blocked address sees nothing.** Every request — the page, the assets and any API route — answers with status `404`. HTML requests get a standalone page whose only content is a large centred `404` (no app bundle, no links, no error text, no service worker), and API requests get the same JSON error the app uses for unknown routes, so nothing hints that the app exists. The real reason and the caller's address are only written to the server log. When only the Quick Entry switch is on, the app stays reachable and the card disappears because `GET /quick-entry/public-config` reports the form disabled.
-- Addresses are compared against the **TCP socket** address, not `X-Forwarded-For`. `app.set('trust proxy', 1)` is on and nothing in front of the container overwrites that header, so `X-Forwarded-For` — and therefore `req.ip` — is client-controlled; a spoofed header cannot get past the gate (verified).
-- **Docker must see the real client address.** With a published port (`ports:`) and Docker's default userland proxy, the container observes the bridge gateway IP (e.g. `172.17.0.1`) for *every* visitor, so a per-device range can never match. Use one of:
-  - `network_mode: "host"` on the service (then `PORT` must be the port you actually want exposed), or
-  - `"userland-proxy": false` in `/etc/docker/daemon.json` on the host, which keeps the client source address through the DNAT rule.
-  Confirm from a second device with the **"IP the server sees for you"** line on the Settings card before switching the gate on.
+- **Which address is compared.** By default the gate uses the **TCP socket** address and ignores `X-Forwarded-For` entirely: nothing in front of the app has to overwrite that header, so `req.ip` is client-controlled and a spoofed header would walk straight through the gate. Behind a reverse proxy every visitor then looks like the proxy, so list the proxy's own address in `IP_ACCESS_TRUSTED_PROXIES` (comma-separated, single addresses or CIDR). The app then reads `X-Forwarded-For` from **right to left** and takes the first address that is not itself a trusted proxy — a proxy that appends (`$proxy_add_x_forwarded_for`) always leaves the honest client on the right, so anything the visitor forged sits further left and is never reached; `X-Real-IP` is the next fallback. A request whose socket peer is *not* listed still falls back to its socket address, so hitting the container port directly cannot be spoofed into the allowlist. `app.set('trust proxy', 1)` is left exactly as it was, so rate limits, sessions and cookies do not change.
+- **Docker must see the real client address.** With a published port (`ports:`) and Docker's default userland proxy, the container observes the bridge gateway IP (e.g. `172.17.0.1`) as its peer for *every* visitor — so when you fill in `IP_ACCESS_TRUSTED_PROXIES`, list that gateway address next to the proxy's own. (`network_mode: "host"` on the service, or `"userland-proxy": false` in `/etc/docker/daemon.json` on the host, keeps the real peer instead.) Confirm from a second device with the **"IP the server sees for you"** line on the Settings card before switching the gate on.
+- **Turning the trusted-proxy list on can lock the admins out.** The compared address changes from the proxy's to the visitor's, so entries approved while the card was showing the proxy stop matching. Add each admin's own address to the allowlist **before** recreating the container with `IP_ACCESS_TRUSTED_PROXIES`, and keep a signed-in Settings tab open while you verify (that route stays reachable for a signed-in session).
 - **Fail-open:** a switch that is on but has no readable entry allows access and logs a warning, so a mistyped list degrades to the old behaviour instead of a lockout. Saving an invalid entry is rejected with the offending line quoted.
 - **Break-glass:** if an allowlist ever locks every admin out, set `IP_ACCESS_ENFORCE=false` in the environment and restart the container. The allowlist is then saved but not applied; correct it in Settings and remove the override.
 - Two paths stay reachable so a lockout is repairable: `/health` (monitoring) and `GET/PUT /api/v1/settings/ip-access` **for an already-signed-in session** — a signed-out stranger still gets the same 404 there.
-- **Only the Express server is the gate.** The Vite dev server (`client/vite.config.js`, port 5173) has no allowlist and proxies `/api` from its own loopback socket, so a machine reaching it looks like `127.0.0.1` to Express and passes the gate. It is therefore bound to `127.0.0.1`; to test the restriction from another device, open `http://<this-machine>:3000`, which is the same edge production uses.
+- **Only the Express server is the gate.** The Vite dev server (`client/vite.config.js`, port 5173) has no allowlist and proxies `/api` from its own loopback socket, so a machine reaching it looks like `127.0.0.1` to Express and passes the gate. It is therefore bound to `127.0.0.1`; to test the restriction from another device, open `http://<this-machine>:3000` — that is the Express server itself, the same code path production uses behind nginx.
 
 
 
@@ -306,7 +308,7 @@ Email delivery is opt-in and requires a SMTP server the admin configures once.
   ```bash
   mysqldump -h <DB_HOST> -P <DB_PORT> -u <DB_USER> -p <DB_NAME> > backup-$(date +%F).sql
   ```
-- **Migrations run automatically** at startup, in filename order, from `server/migrations`. They are tracked in the `schema_migrations` table and each one is written to be **idempotent** and to **preserve existing rows** (the multi-user migration assigns all pre-existing records to the existing admin).
+- **Migrations run automatically** at startup, in filename order, from `server/migrations`. Each applied file is recorded in the `schema_migrations` table and skipped on every later start, so a restart (or a power cut mid-deploy) never re-applies one. Most files are additionally written to be idempotent (`CREATE TABLE IF NOT EXISTS`, `information_schema` guards); `002`, `006` and `999` contain plain `ALTER` / `DROP INDEX` / `ADD CONSTRAINT` and rely on that tracking row, so never edit or delete an applied row — see the operations document for the recovery step. No migration deletes or rewrites existing rows.
 - After upgrading, the existing single account continues to work as the admin; no manual data step is required.
 
 ## Notes
@@ -314,7 +316,4 @@ Email delivery is opt-in and requires a SMTP server the admin configures once.
 - The app includes a one-time admin setup flow for first-time installation.
 - Production Turnstile verification is enforced only in `NODE_ENV=production`.
 - The browser-side React client uses same-origin API calls when deployed behind the Express container, which makes the single-container architecture reliable and simpler to manage.
-
-
-
-docker build --build-arg VITE_TURNSTILE_SITE_KEY="0x4AAAAAAEXeYHa6UT7ssNUT" -t syedhamza6265/asset-management-app:bookworm-slim .
+- `VITE_TURNSTILE_SITE_KEY` is a **build argument**, not runtime config (see step 1 above) — changing it means rebuilding the image. Keep the real value in a CI repository variable, never in this file.

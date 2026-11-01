@@ -147,6 +147,7 @@ Environment values, with the required ones first:
 | `EMAIL_WORKER_INTERVAL_MS` | optional | 15000 | how often the worker wakes up |
 | `EMAIL_MAX_ATTEMPTS` | optional | 5 | after this a send is marked `failed` permanently |
 | `IP_ACCESS_ENFORCE` | optional | `true` | break-glass. Set `"false"` and recreate the container if an allowlist mistake locks every admin out, fix the list in Settings, then set it back |
+| `IP_ACCESS_TRUSTED_PROXIES` | optional | `''` | addresses of the reverse proxy in front of the app (`nginx` machine, plus the Docker bridge gateway `172.17.0.1` when a port is published). Empty means the app is reached directly, and then the allowlist compares the socket address. See "Real client IPs and the allowlist" |
 
 `SESSION_SECRET`, `SMTP_ENCRYPTION_KEY` and `DB_PASSWORD` are secrets. Keep
 them in the compose file only if its permissions make that acceptable
@@ -252,36 +253,62 @@ new numbered file instead.
 
 # Real client IPs and the allowlist
 
-`app.set('trust proxy', 1)` is on, so rate limiters use the left-most address
-in `X-Forwarded-For` (one trusted hop). The **IP allowlist does not** — it reads
-`req.socket.remoteAddress`, because that header is attacker-controlled and a
-gate built on it can be bypassed by typing a header. That difference is
-deliberate and is documented in `modules/ipAccess/service.js`.
+The gate needs the visitor's own address, and three different values can be in
+play: the visitor's real IP, the nginx machine's IP, and (under Docker) the
+bridge gateway. `modules/ipAccess/service.js` resolves it like this:
 
-Practical consequences on a Docker deployment:
+| Situation | What the allowlist compares |
+| --- | --- |
+| `IP_ACCESS_TRUSTED_PROXIES` empty (default) | the TCP socket address. Nothing is trusted, so no header can fool the gate — the behaviour a direct-LAN, localhost or `network_mode: "host"` deployment wants |
+| List set **and** the socket peer is in it | the right-most address in `X-Forwarded-For` that is not itself listed (then `X-Real-IP`, then the socket address) |
+| List set **but** the socket peer is not in it | the TCP socket address — a direct hit on the published port cannot claim to be somebody else |
 
-- With a published port and Docker's default **userland proxy**, the container
-  sees the bridge gateway address (something like `172.17.0.1`) for *every*
-  visitor. A per-device allowlist entry will then never match, and the list
-  that "works" from your laptop will lock the office out.
-- Two fixes, either of which is fine: `network_mode: "host"` for this service,
-  or `"userland-proxy": false` in `/etc/docker/daemon.json` on the host
-  (Linux only; restart Docker afterwards).
-- Always verify before switching a gate on: open **Settings → Network
-  restriction** from a second device and read the "IP the server sees for you:"
-  line. If it shows the same address for two different devices, you are still
-  behind the proxy.
-- Behind an nginx/Caddy reverse proxy the socket address is the proxy's. In
-  that topology you would need PROXY protocol or to accept the trust-proxy
-  trade-off; a plain `X-Forwarded-For` from a proxy you control is the usual
-  answer, and it is a change to `decideAccess`, not a config toggle.
+Because a normal nginx `location` block appends its own peer with
+`$proxy_add_x_forwarded_for`, the honest address always lands on the **right** of
+the chain, and whatever the visitor typed sits further left and is never
+reached. That is why the list is scanned right-to-left and not left-to-right:
+the left-most entry is exactly the one a client controls.
+
+`app.set('trust proxy', 1)` is untouched, so `req.ip` — which the rate limits
+use (login 10/15 min, Quick Entry 5/15 min, email test 20/5 min) — keeps its
+current meaning. Only the allowlist gained the new resolution.
+
+Set it up:
+
+```yaml
+# nginx on another machine, container reached through a published port.
+# Include the bridge gateway too: with Docker's default userland proxy that is
+# the address the container actually sees as its peer.
+IP_ACCESS_TRUSTED_PROXIES: "192.168.1.10,172.17.0.1"
+```
+
+- **Order matters — do not lock yourself out.** The two switches live in the
+  database, not in the environment, so a deployment that already enforces them
+  changes behaviour the moment the variable is set: the compared address goes
+  from the proxy's to the visitor's, and entries approved *as a proxy IP* stop
+  matching, which can give every admin a `404`. Add the admins' own addresses to
+  the list **first**, keep a signed-in Settings tab open (that route is exempt
+  for a signed-in session), then recreate the container with the new variable.
+- Verify: **Settings → Network restriction** from a second device and read
+  "IP the server sees for you:". Two different devices must now show two
+  different addresses. If they still show the same one, the container is not
+  seeing a usable chain — either the proxy address is missing from the list or
+  nginx forwards no `X-Forwarded-For` at all.
+- If nginx genuinely forwards no chain (or no `X-Real-IP`), the gate falls back
+  to the socket address: safe, but visitors still look identical. In that case
+  the app-side fix is not enough and the proxy has to send the header.
 - `IP_ACCESS_ENFORCE=false` is the break-glass. It disables enforcement
   entirely, without touching the saved list.
+- The published port is a bypass surface for the *proxy trust* idea: anyone who
+  can reach the container port directly arrives with their own socket address,
+  so they are judged as themselves (and blocked unless listed). Keeping the
+  mapping host-local (`127.0.0.1:8073:8073`) or firewalling it to the nginx
+  machine is extra defence in depth, not a requirement.
 
 The blocked response is a `404` page for HTML and `{"code":"NOT_FOUND"}` for
-JSON, with the real reason logged server-side. `/health` and the signed-in
-`/api/v1/settings/ip-access` route are exempt so you can always fix the list
-from inside the app.
+JSON, with the real reason and the resolved address logged server-side.
+`/health` and the signed-in `/api/v1/settings/ip-access` route are exempt so you
+can always fix the list from inside the app.
 
 # HTTPS, ports and users
 
@@ -356,7 +383,8 @@ cookie and nobody can stay signed in.
 | Page loads, every save fails with a network error in the console | `FRONTEND_URL` does not match the origin in the address bar | set it to what users type |
 | Sign-in says "Human verification failed" | Turnstile enabled without `TURNSTILE_SITE_KEY`/`SECRET_KEY`, or the domain is not registered, or the bundle was built without the site key | disable Turnstile in Settings (break-glass: sign in from an allowed host), or rebuild with the build arg |
 | Login blocked with "Too many login attempts" | limiter: 10 per 15 minutes per IP | wait it out; check whether several users share one NAT address |
-| Everyone gets a 404 page | allowlist switched on with the wrong entries (Docker gateway issue) | `IP_ACCESS_ENFORCE: "false"`, re-create, fix the list, set it back to `"true"` |
+| Everyone gets a 404 page | allowlist switched on with the wrong entries (proxy or Docker gateway address, not the visitor's) | `IP_ACCESS_ENFORCE: "false"`, re-create, fix the list, set it back to `"true"` |
+| The allowlist cannot tell two visitors apart, or the Settings card shows the same IP for both devices | nginx forwards the traffic but its address is not in `IP_ACCESS_TRUSTED_PROXIES`, so the gate still compares socket addresses | add the proxy (and `172.17.0.1` when a port is published) to `IP_ACCESS_TRUSTED_PROXIES`, re-create, then re-check the card from a second device |
 | No notification emails | SMTP disabled/unconfigured, `EMAIL_WORKER_ENABLED=false`, or no matching rule | Settings → SMTP → "Test connection"; check Email History status |
 | Email History full of `failed` with `EAUTH` | bad SMTP credentials / no app password | re-enter; for Gmail use an app password |
 | Stored SMTP password suddenly unreadable | `SMTP_ENCRYPTION_KEY` changed | restore the old key, or re-enter the password once |

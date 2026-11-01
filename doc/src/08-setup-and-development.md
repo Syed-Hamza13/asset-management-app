@@ -177,9 +177,11 @@ There are two independent test layers plus a behaviour-lock harness.
 cd server && npm test        # or: npm --prefix server test  from the root
 ```
 
-`node --test` with no browser, no database and no network. Five files, 40
-cases: `automationRules.test.js` (13), `ipList.test.js` (13),
-`branding.test.js` (6), `email.test.js` (5), `validation.test.js` (3). These
+`node --test` with no browser, no database connection and no network. Six files,
+52 cases: `automationRules.test.js` (13), `ipList.test.js` (13),
+`ipAccess.test.js` (12 — the client-address resolver, including the forged
+`X-Forwarded-For` cases), `branding.test.js` (6), `email.test.js` (5),
+`validation.test.js` (3). These
 cover the pure helpers only, so they always run — they are the fastest way to
 know you did not break the automation or IP-matching logic.
 
@@ -365,11 +367,11 @@ then a spec in `testing/`.
 | SMTP password saves then nothing sends | `EMAIL_WORKER_ENABLED=false`, no rule matched, or `SMTP_ENCRYPTION_KEY` changed since saving (the stored blob is then undecryptable) |
 | Emails never arrive on Gmail | you used the account password, not an app password |
 | `docker compose logs` shows the app but a phone cannot open it | the port mapping, not `EXPOSE`, decides the host port; check `ports:` in the compose file |
-| Every visitor looks like the same IP under Docker | userland proxy mode. The allowlist is reading the gateway's address; see the operations document |
+| Every visitor looks like the same IP | the app sits behind a proxy (or Docker's bridge gateway) and `IP_ACCESS_TRUSTED_PROXIES` is empty, so the allowlist is comparing socket addresses. See the operations document |
 
 # Before you call a change finished
 
-1. `cd server && npm test` — 40 unit cases.
+1. `cd server && npm test` — 52 unit cases.
 2. `cd testing && npm run test:unit && npm run test:e2e` (add
    `--project=firefox-phone` when anything layout-related moved).
 3. `npm --prefix client run build` and click the change in a real browser at

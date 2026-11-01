@@ -49,6 +49,7 @@ up as a restarting container rather than a half-working app.
 | `EMAIL_WORKER_INTERVAL_MS` | `15000` | no | poll interval |
 | `EMAIL_MAX_ATTEMPTS` | `5` | no | retry cap for transient failures |
 | `IP_ACCESS_ENFORCE` | `'true'` | no | break-glass: `'false'` disables the IP gate without touching the saved allowlist |
+| `IP_ACCESS_TRUSTED_PROXIES` | `''` | no | comma-separated addresses of the reverse proxies in front of the app (single addresses or CIDR). Empty = nothing proxies to us, so the allowlist reads the TCP socket address. Set it when nginx forwards traffic, otherwise every visitor looks like the proxy |
 
 # Request pipeline (order matters)
 
@@ -324,13 +325,13 @@ Today **only Quick Entry** writes these rows.
 | Storage | `app_settings`: `ip_access_login_enabled`, `ip_access_quick_entry_enabled` (both seeded `'false'`), `ip_access_list` |
 | Entry formats | single address (IPv4/IPv6), CIDR, `from-to` range, trailing wildcard `192.168.7.*`; separated by newline, comma or semicolon; each normalised to `{family, start, end}` BigInt ranges |
 | Limit | `MAX_ENTRIES = 200`; invalid entries are rejected at save with the offending line quoted (`400 INVALID_IP_ENTRY`) |
-| Address used | `req.socket.remoteAddress` (IPv4-mapped unwrapped). `X-Forwarded-For` is deliberately ignored, because `trust proxy: 1` makes `req.ip` client-supplied here |
-| **Fail-open** | a block needs: enforcement on in env **and** the switch enabled **and** at least one valid entry **and** a readable socket address. Otherwise access is allowed and the reason is logged (`disabled-by-env`, `not-enabled`, `no-valid-entries`, `unknown-client-ip`) |
+| Address used | `clientIp(req)` → `resolveClientIp(req, trustedProxies)` in `modules/ipAccess/service.js`. **Empty `IP_ACCESS_TRUSTED_PROXIES` (default):** the TCP socket address, IPv4-mapped unwrapped, forwarded headers ignored — the pre-proxy behaviour, unchanged. **List set and the socket peer is in it:** `X-Forwarded-For` is scanned **right-to-left** and the first address that is not a trusted proxy wins (`X-Real-IP` next, socket last). A proxy that appends (`$proxy_add_x_forwarded_for`) always writes the honest peer on the right, so a header the visitor forged sits further left and is never used. A peer that is *not* listed keeps the socket address, which is why a direct hit on the container port cannot be spoofed into the allowlist. `app.set('trust proxy', 1)` is left alone, so rate limits, sessions and cookies behave exactly as before |
+| **Fail-open** | a block needs: enforcement on in env **and** the switch enabled **and** at least one valid entry **and** a readable client address. Otherwise access is allowed and the reason is logged (`disabled-by-env`, `not-enabled`, `no-valid-entries`, `unknown-client-ip`). Unparsable `IP_ACCESS_TRUSTED_PROXIES` entries are dropped with one start-up warning |
 | Blocked response | `404`. `GET` with `Accept: text/html` → a standalone page whose only content is a large centred `404` (no bundle, no links, no service worker); anything else → the same JSON the app returns for unknown routes. The real reason and the caller's address go only to the server log |
 | Exemptions | `/health` always; `GET/PUT /api/v1/settings/ip-access` **for an already signed-in session**, so a lockout can be repaired from inside |
 | Break-glass | `IP_ACCESS_ENFORCE=false` in the environment + recreate the container. The allowlist keeps saving but is not applied |
-| Admin view | `{ loginEnabled, quickEntryEnabled, list, entries[], invalid[], entryCount, invalidCount, maxEntries, yourIp, yourIpAllowed, enforced }` — `yourIp` is the "IP the server sees for you" line to verify before switching on |
-| Docker caveat | with a published port and the default userland proxy, the container sees the bridge gateway (e.g. `172.17.0.1`) for **every** visitor, so per-device entries can never match. Use `network_mode: "host"` or `"userland-proxy": false` on the host |
+| Admin view | `{ loginEnabled, quickEntryEnabled, list, entries[], invalid[], entryCount, invalidCount, maxEntries, yourIp, yourIpAllowed, enforced }` — `yourIp` is the resolved address shown as "IP the server sees for you", so it is the line to check first when the gate looks wrong |
+| Reverse proxy caveat | behind nginx the socket peer is the proxy (or Docker's bridge gateway `172.17.0.1` when the userland proxy is on). Listing those addresses is what makes per-device entries match again. If the proxy forwards **no** usable chain the gate falls back to the proxy address — safe, but the restriction still cannot tell visitors apart, so read `yourIp` from a second device before switching on |
 | Dev server caveat | the Vite dev server has no allowlist and proxies `/api` from its own loopback, so anyone reaching it looks like `127.0.0.1` to Express. That is why it is bound to `127.0.0.1` |
 
 # Branding, icon and manifest

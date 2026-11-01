@@ -172,7 +172,7 @@ rules** (`getEffectiveAutomations`), the same order the client preview uses.
 4. `cookieParser` + `express-session` load the session row from MySQL.
 5. `csrfProtection` — for non-GET requests from a signed-in session, compares
    `X-CSRF-Token` against `req.session.csrfToken` with a timing-safe compare.
-6. `requireNetworkGate()` — if the whole-app IP allowlist is on and this socket
+6. `requireNetworkGate()` — if the whole-app IP allowlist is on and this client
    address is not listed, the request ends here with a plain `404`.
 7. `/api/v1` router → `requireAuth` → `loadUser` → `requirePermission(...)`.
 8. Controller validates the payload with Zod, calls a service.
@@ -196,9 +196,13 @@ rules** (`getEffectiveAutomations`), the same order the client preview uses.
 | Network gate | optional IP allowlist; blocked visitors receive the same `404` shape the app uses for unknown routes |
 | Input | Zod on every payload, `mysql2` prepared statements with positional placeholders (no string SQL interpolation) |
 
-`app.set('trust proxy', 1)` is enabled, but nothing in the current deployment
-overwrites `X-Forwarded-For`, so `req.ip` is client-controlled. That is exactly
-why the allowlist compares the **TCP socket** address instead of `req.ip`.
+`app.set('trust proxy', 1)` is enabled, so `req.ip` (which the rate limits use)
+is whatever the last hop forwarded. Nothing in front of the container has to
+overwrite that header, so a visitor can put anything in it — which is why the IP
+allowlist does **not** use `req.ip`. It resolves the address itself: the TCP
+socket address by default, or — when `IP_ACCESS_TRUSTED_PROXIES` lists the proxy
+in front of us — the right-most forwarded address that is not itself a listed
+proxy. See the backend guide, "IP allowlist internals".
 
 # PWA architecture
 
@@ -262,9 +266,13 @@ Flagged so a new developer does not trust the wrong file:
 
 | Item | Reality |
 | --- | --- |
-| `README.md` says port `3000` with mapping `4000:3000`, health at `:4000` | The shipped `docker-compose.example.yaml` and `Dockerfile EXPOSE` use **8073**. `EXPOSE` is documentation only; the listening port is `PORT`, and the host mapping is whatever the compose file says |
-| `README.md` "Project structure" lists `docker-compose.yml` | The repository ships `docker-compose.example.yaml`; the real file is gitignored |
-| `README.md` claims every migration is idempotent | True for most, **not** for `002`, `006` and `999`, which contain plain `ALTER` / `DROP INDEX` / `ADD CONSTRAINT` |
-| `README.md` ends with a `docker build` line containing a real Turnstile site key | Site keys are public, but a committed key is still needless noise — keep build args in CI variables |
 | `IMPLEMENTATION-PLAN.md` header says "nothing proposed below is implemented yet" | Written before the work; the shipped code supersedes it |
 | `testing/helpers/global-setup.js` and `capture-snapshot.js` | Fall back to hardcoded admin credentials for the live database. Rotate these to a dedicated test account before sharing the repository |
+
+Three older discrepancies are now closed, so do not go looking for them: the
+README uses the same `8073` port scheme as `Dockerfile` and
+`docker-compose.example.yaml`; it names the shipped example file instead of a
+gitignored `docker-compose.yml`; its migration paragraph states which files are
+idempotent and which rely on the `schema_migrations` tracking row. The real
+Turnstile site key that used to sit at the end of the README is gone — build
+args belong in CI variables.

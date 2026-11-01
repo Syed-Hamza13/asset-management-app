@@ -24,7 +24,13 @@ const schema = z.object({
   // Break-glass for the IP allowlist: set to 'false' and restart if an
   // allowlist mistake ever locks an admin out. Login/quick-entry are gated
   // while this is 'true' (default).
-  IP_ACCESS_ENFORCE: z.enum(['true', 'false']).default('true')
+  IP_ACCESS_ENFORCE: z.enum(['true', 'false']).default('true'),
+  // Addresses of the reverse proxies that sit in front of this app, e.g.
+  // '192.168.1.10,172.17.0.1'. Empty (default) means "nothing is in front of
+  // the container", so the allowlist gate reads the TCP socket address. List
+  // the proxy machine here when nginx forwards your traffic, otherwise every
+  // visitor arrives as the proxy IP and one allowlist entry admits them all.
+  IP_ACCESS_TRUSTED_PROXIES: z.string().default('')
 });
 
 export const env = schema.parse(process.env);
