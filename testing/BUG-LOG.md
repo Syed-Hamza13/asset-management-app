@@ -657,3 +657,86 @@ Open judgement call for the user: Share / Rename / Delete now live one swipe awa
 what "ek row me slider" asked for; if Delete should stay thumb-visible without a swipe, the row would
 have to drop two of the eight actions into a "more" menu, which is a behaviour change, not a layout one.
 
+
+# #19 About overlay: "IT assets" wording removed, card widened - and a click that never landed (2026-11-01)
+
+Requested change, not a defect. The first overview paragraph read "an internal tool for tracking IT
+and office assets … so a laptop register and a furniture register can live in the same application",
+which sold the app as an IT-only tool. `client/src/appInfo.js` now opens with "a digital register for
+every kind of asset an organisation keeps, from consumable stock to fixed office assets" and names the
+feature set (per-type fields, dropdowns, validation, automation, permissions, email). The same
+"IT and office" phrase went out of `package.json`'s `description`. No other About string moved, and
+`overview[1]` (single container, MIT) is untouched.
+
+The card also left `max-w-lg` (512px at every width) for a three-step ladder:
+`calc(100vw-1.5rem)` on phones → `min(40rem, 100vw-2rem)` from 640px → `min(56rem, 50vw)` from 1280px.
+Measured in the same Firefox and session state the suite uses (throwaway script, deleted afterwards;
+screenshots kept in `.artifacts/mobile-audit/about-<width>.png`):
+
+| viewport | card width | % of screen | page overflow | card sideways scroll |
+|---|---|---|---|---|
+| 1920 | 896px (56rem cap) | 47% | 0px | 0px |
+| 1440 | 720px | 50% | 0px | 0px |
+| 1280 | 640px | 50% | 0px | 0px |
+| 1024 | 640px | 63% | 0px | 0px |
+| 768 | 640px | 83% | 0px | 0px |
+| 640 | 608px | 95% | 0px | 0px |
+| 430 | 406px | 94% | 0px | 0px |
+| 360 | 336px | 93% | 0px | 0px |
+
+Half the screen on a desktop window, edge-to-edge on a handset, monotonic in between, and the capped
+56rem keeps a 4K monitor from rendering 1900px-wide paragraphs. The card scrolls inside its own
+`max-h` box: `pageOverflow` stayed 0 at every width, so the overlay never widens the page.
+
+## Suite changes
+
+- `e2e/09-settings.spec.js` "the About card opens a read-only overlay" now also locks the copy (must
+  contain "a digital register for every kind of asset" and "from consumable stock to fixed office
+  assets", must not contain "furniture") and the width (card between 45% and 55% of a 1280px window).
+- `e2e/mobile/20-mobile-layout.spec.js` gained "the About overlay fills the phone width without
+  leaving an edge behind": card ≥ `screen - 32`px, page overflow 0, card `scrollWidth - clientWidth`
+  0, and no `p/li/dt/dd/a/button/img` outside the viewport. The project is now 11 tests.
+
+## #19a The new About test failed to open the overlay - reflow race again (#12/#16 family)
+
+Two runs failed the same way, both before the fix below: the phone test on its first execution, and
+the desktop test inside a full 87-test run. `error-context.md` for the desktop failure shows the
+Settings page with `heading "About this application"` and `button "Show details"` present and **no
+dialog node at all** - the click was dispatched but never took effect, and the screenshot proves the
+app was fine 8 seconds later. About is the last card on a page whose admin cards (SMTP, Quick Entry)
+grow as their fetches land, so the button was scrolled towards a position the layout then moved.
+
+Test-side fix, no assertion loosened and no product change: wait for the page to stop growing before
+clicking. Desktop reuses the existing settle signal (`toHaveText(CARD_TITLES)`); the phone test waits
+for the `SMTP (email delivery)` heading, the one title that only completes after a request. Proven by
+re-running each five times back to back: **5 passed / 5 passed**, then the whole suite green.
+
+On `index-Buu6RsH5.js`: **unit 21 passed / 0 failed**, **e2e 87 passed / 0 failed (4.3 m - 76 desktop
++ 11 phone)**. Docs `02`, `06`, `08` re-rendered (width ladder + the new phone test count) and
+`verify_docs.py` reports "no problems found".
+
+## #19 follow-up: wider and shorter on the same day (2026-11-01)
+
+"about card ki width thori aur badao aur height thori si kam karo". The ladder became
+`calc(100vw-1.5rem)` → `min(40rem, 100vw-2rem)` from 640px → **`min(60rem, 58vw)`** from 1280px, and the
+height cap went from `100vh-1.5rem`/`100vh-2rem` to **`100vh-3rem` on a phone / `100vh-7rem` from 640px**,
+which is a fixed 24px (phone) or 56px (desktop) margin above and below the card. Re-measured over eight
+viewports (`.artifacts/mobile-audit/about-<W>x<H>.png`), the same throwaway script afterwards deleted:
+
+| viewport | card | % width | % height | page overflow | card sideways scroll |
+|---|---|---|---|---|---|
+| 1920x1080 | 960x968 (60rem cap) | 50% | 90% | 0px | 0px |
+| 1440x900 | 835x788 | 58% | 88% | 0px | 0px |
+| 1280x720 | 742x608 (was 640x688) | 58% | 84% | 0px | 0px |
+| 1024x768 | 640x656 | 63% | 85% | 0px | 0px |
+| 768x900 | 640x788 | 83% | 88% | 0px | 0px |
+| 640x800 | 608x688 | 95% | 86% | 0px | 0px |
+| 430x860 | 406x812 | 94% | 94% | 0px | 0px |
+| 360x800 | 336x752 | 93% | 94% | 0px | 0px |
+
+The desktop About test's width band moved from 45-55% to 52-62% and gained three assertions (top gap
+≥40px, bottom gap ≥40px, card `scrollWidth - clientWidth` = 0), so "wider but not screen-filling" is
+now locked rather than eyeballed. That band is the user's requested size, not a loosened lock.
+`doc/src/06-frontend-guide.md` and its .docx carry the new ladder.
+
+Verified on `index-CiTWAfst.js`: both About tests 3/3 each, then the whole suite green.

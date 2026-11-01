@@ -248,8 +248,8 @@ its job is to prove that behaviour did not change.
 
 | Project | Browser / viewport | Scope |
 | --- | --- | --- |
-| `firefox` | Desktop Firefox 1280×720 | `e2e/**/*.spec.js` except `e2e/mobile/**` — 75 tests |
-| `firefox-phone` | Desktop Firefox 360×800 | `e2e/mobile/**/*.spec.js` — 10 tests |
+| `firefox` | Desktop Firefox 1280×720 | `e2e/**/*.spec.js` except `e2e/mobile/**` — 76 tests |
+| `firefox-phone` | Desktop Firefox 360×800 | `e2e/mobile/**/*.spec.js` — 11 tests |
 
 Plus 21 unit tests in `testing/unit/` (`node --test`), and a separate runner in
 `server/test/` (`npm test` at the root). `workers: 1`, `retries: 0`,

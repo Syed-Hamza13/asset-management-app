@@ -43,6 +43,9 @@ COPY server/migrations ./migrations
 # /app/server/src/modules/*/automation*.js import ../../../../shared/automationRules.js.
 COPY shared /app/shared
 
+# The MIT license text travels with the distributed container.
+COPY LICENSE ./
+
 COPY --from=frontend-builder /app/client/dist /app/client/dist
 
 EXPOSE 8073

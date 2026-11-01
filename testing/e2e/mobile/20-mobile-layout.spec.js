@@ -393,4 +393,46 @@ test.describe('phone layout @ 360px', () => {
       expect(scroller, `${route}: the table needs its own horizontal scroller`).toBe(true);
     }
   });
+
+  test('the About overlay fills the phone width without leaving an edge behind', async ({ page }) => {
+    const writes = watchWrites(page);
+    await page.goto('/settings');
+    // About is the last card on a page that keeps growing while the admin cards
+    // fetch, so wait for the one title that only completes after a request
+    // ("SMTP" → "SMTP (email delivery)") before scrolling down to click it.
+    await expect(page.getByRole('heading', { name: 'SMTP (email delivery)', exact: true })).toBeVisible();
+    await page.getByRole('button', { name: 'Show details' }).click();
+    const dialog = page.getByRole('dialog', { name: 'About Asset Manager' });
+    await expect(dialog).toBeVisible();
+
+    const measured = await dialog.evaluate((el) => {
+      const box = el.getBoundingClientRect();
+      const doc = document.documentElement;
+      const clipped = [];
+      for (const child of el.querySelectorAll('p, li, dt, dd, a, button, img')) {
+        const r = child.getBoundingClientRect();
+        if (r.width && (r.right > doc.clientWidth + 1 || r.left < -1)) {
+          clipped.push(`${child.tagName.toLowerCase()} "${child.textContent.trim().slice(0, 20)}" right=${Math.round(r.right)}`);
+        }
+      }
+      return {
+        width: Math.round(box.width),
+        left: Math.round(box.left),
+        screen: doc.clientWidth,
+        pageOverflow: doc.scrollWidth - doc.clientWidth,
+        innerOverflow: el.scrollWidth - el.clientWidth,
+        clipped: clipped.slice(0, 5),
+      };
+    });
+    // The card is capped to the screen minus the overlay's own padding, so it
+    // reaches edge to edge at 360px instead of floating as a narrow strip.
+    expect(measured.width, 'card width').toBeGreaterThanOrEqual(measured.screen - 32);
+    expect(measured.pageOverflow, 'the overlay must not widen the page').toBe(0);
+    expect(measured.innerOverflow, 'the card must not need sideways scrolling').toBe(0);
+    expect(measured.clipped, 'nothing hangs past the screen').toEqual([]);
+
+    await page.keyboard.press('Escape');
+    await expect(dialog).toHaveCount(0);
+    expect(writes, `opening About must not write: ${writes.join(', ')}`).toEqual([]);
+  });
 });

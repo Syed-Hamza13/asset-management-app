@@ -31,6 +31,8 @@ ALLOWED = {
     "a@x.com",
     "b@x.com",
     "192.168.1.20",
+    # Published author contact in the About/licensing sections — public by design.
+    "syed13hamza@gmail.com",
     "token = crypto.randomBytes(32).toString('hex')",
 }
 

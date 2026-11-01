@@ -1,5 +1,6 @@
 import { useAuth } from "../context/AuthContext";
 import { Alert } from "../components/ui";
+import { AboutCard } from "./settings/AboutCard";
 import { BrandingCard } from "./settings/BrandingCard";
 import { IpAccessCard } from "./settings/IpAccessCard";
 import { PasswordCard } from "./settings/PasswordCard";
@@ -8,7 +9,8 @@ import { SmtpCard } from "./settings/SmtpCard";
 import { TurnstileCard } from "./settings/TurnstileCard";
 
 // Each card loads and saves its own settings, so one failing endpoint only
-// blanks its own card. The admin cards are the last four.
+// blanks its own card. The admin cards are the last four. The About card reads
+// nothing and is shown to every signed-in user.
 export function Settings() {
   const { can, user, isAdmin } = useAuth();
 
@@ -21,5 +23,6 @@ export function Settings() {
     {isAdmin && <QuickEntryCard />}
     {isAdmin && <SmtpCard />}
     <PasswordCard />
+    <AboutCard />
   </div>;
 }

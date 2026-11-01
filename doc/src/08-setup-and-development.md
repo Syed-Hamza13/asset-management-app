@@ -196,9 +196,9 @@ projects, same browser:
 | `npm ci` | installs Playwright (once) |
 | `npx playwright install firefox` | downloads the browser (once) |
 | `npm run test:unit` | 21 cases in `unit/` — automation algorithm, validation messages, date helpers, source contracts. No browser, no network |
-| `npm run test:e2e` | 75 desktop specs, headless |
+| `npm run test:e2e` | 76 desktop specs, headless |
 | `npm run test:e2e:headed` | the same, in a Firefox window you can watch |
-| `npx playwright test --project=firefox-phone` | the 10 phone-layout specs at 360x800 |
+| `npx playwright test --project=firefox-phone` | the 11 phone-layout specs at 360x800 |
 | `node scripts/mobile-audit.mjs 360 800 --dialogs` | diagnostic: screenshots and measures every page at phone size |
 | `npm run snapshot:capture` | rewrites `baselines/api-contract.json` |
 

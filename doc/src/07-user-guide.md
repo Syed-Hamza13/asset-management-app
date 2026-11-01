@@ -693,6 +693,22 @@ is not this app.
 The same card as described near the start: "Current password", "New password",
 "Confirm new password", "Change password".
 
+## About this application
+
+The last card on this page is read-only and is visible to every user, whatever
+their role. "Show details" opens a centred panel listing the application version,
+what it does, its license, the author, the contributors and the tech stack. Close
+it with the cross, the Escape key, or by clicking outside it.
+
+On a desktop screen there is a second entry point: the small info button at the
+bottom right of the sidebar, under your email address and next to "Logout", opens
+the same panel. On a phone the sidebar does not exist, so the Settings card is the
+only way in.
+
+The application is free and open source under the MIT License, so you may install,
+change and share it without a fee. Nothing in this panel is configurable and it
+sends nothing to the server when opened.
+
 # Using the app on a phone
 
 - The sidebar is replaced by a top bar with the page name, the bell and

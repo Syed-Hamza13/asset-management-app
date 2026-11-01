@@ -31,7 +31,7 @@ lists the differences.
 A new developer's path: **01 → 07 (skim) → 02 → 08**, then 03/04/05/06 as
 needed per task. An admin's path: **01 → 07 → 09** for the Settings cards.
 
-# The app in eight lines
+# The app in nine lines
 
 - It tracks **assets** — laptops, printers, chairs — for an organisation.
 - An **asset type** is a name plus a form; the form is built from reusable
@@ -49,6 +49,8 @@ needed per task. An admin's path: **01 → 07 → 09** for the Settings cards.
   browser.
 - One Docker container runs the API and the built website together; MySQL 8
   holds every byte of state.
+- It is free and open source under the MIT License (version 1.0.0); the in-app
+  About panel repeats the license, author and contributor details.
 
 # Vocabulary used consistently
 

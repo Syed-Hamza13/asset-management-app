@@ -2,6 +2,8 @@
 
 A production-ready asset management system for tracking inventory, asset metadata, custom fields, dropdowns, automations, and reporting. The project is built with React + Vite on the frontend, Express + MySQL on the backend, and is designed for both local development and single-container Docker deployment.
 
+It is free and open-source software under the [MIT License](LICENSE) — use it, modify it, and deploy it commercially without a fee or a feature limit. The in-app **Settings → About this application** panel (and the ⓘ icon at the bottom of the sidebar) shows the same information, plus the current version.
+
 ## What this project does
 
 - Manage multiple asset types with custom fields and validation
@@ -16,10 +18,11 @@ A production-ready asset management system for tracking inventory, asset metadat
 
 ## Tech stack
 
-- Frontend: React, Vite, Tailwind CSS
-- Backend: Node.js, Express
+- Frontend: React 19, Vite 7, Tailwind CSS 4, React Router 7
+- Backend: Node.js (ESM), Express 5, Zod
 - Database: MySQL
 - Auth/security: Argon2, express-session, Helmet, CSRF, Cloudflare Turnstile
+- Email: Nodemailer with an in-process outbox worker
 - Deployment: Docker, Docker Compose
 
 ## Project structure
@@ -30,6 +33,7 @@ asset-management-app/
 ├── .dockerignore
 ├── docker-compose.example.yaml
 ├── .gitignore
+├── LICENSE
 ├── README.md
 ├── package.json
 ├── client/
@@ -317,3 +321,17 @@ Email delivery is opt-in and requires a SMTP server the admin configures once.
 - Production Turnstile verification is enforced only in `NODE_ENV=production`.
 - The browser-side React client uses same-origin API calls when deployed behind the Express container, which makes the single-container architecture reliable and simpler to manage.
 - `VITE_TURNSTILE_SITE_KEY` is a **build argument**, not runtime config (see step 1 above) — changing it means rebuilding the image. Keep the real value in a CI repository variable, never in this file.
+
+## License, author and contributors
+
+**License.** MIT — see [LICENSE](LICENSE). This application is free and open source: you may use, study, modify and redistribute it, including commercially, as long as the copyright notice travels with it. There is no paid tier, no feature gate and no telemetry — the only outbound network calls are the ones you configure yourself (your MySQL host, your SMTP server, and Cloudflare Turnstile if you enable it).
+
+**Version.** `1.0.0`. The version lives in four places that must move together: `package.json` at the root, in `client/` and in `server/`, plus `APP.version` in `client/src/appInfo.js` — that last one is what the in-app About panel renders, because the browser bundle cannot read `package.json` at runtime.
+
+**Author and developer.** Syed Hamza — [GitHub](https://github.com/Syed-Hamza13) · [LinkedIn](https://www.linkedin.com/in/syed-hamza-9452b0232) · [syed13hamza@gmail.com](mailto:syed13hamza@gmail.com)
+
+**Contributors.** Tariq Khan, Eklavya Foundation.
+
+**In-app About.** **Settings → About this application**, or the info button at the bottom of the sidebar, opens an overlay with the overview, feature list, license, author links, contributors and tech stack. Every signed-in user can open it regardless of role; on a phone the Settings card is the entry point, since the sidebar is desktop-only.
+
+**Contributing.** Fork the repository, keep `npm --prefix server test` and the `testing/` behaviour suite green, and open a pull request. Bugs and feature requests go to the [issue tracker](https://github.com/Syed-Hamza13/asset-management-app/issues).
