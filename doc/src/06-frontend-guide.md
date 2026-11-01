@@ -32,14 +32,16 @@ client/
     main.jsx              StrictMode + BrowserRouter + AuthProvider, SW register
     App.jsx               every route, guards, redirect rules
     index.css             font reset, spinner, row-hover, phone breakpoints
+    appInfo.js            the About text: name, version, license, author,
+                          contributors, tech stack
     api/client.js         one place where the API is called
     context/              AuthContext, ToastContext, NotificationsContext
     components/           Layout, ui.jsx, DynamicForm, AssetForm,
                           AutomationBuilder, NotificationBell/Banner,
-                          AssetTypeIcon, Turnstile
+                          AboutDialog, AssetTypeIcon, Turnstile
     pages/                one file per route, plus three folders of
                           page-private sub-components
-    hooks/useColumnFilters.js
+    hooks/                useColumnFilters.js, useAppIcon.js
     utils/                date.js, assetValues.js, xlsx.js
     icons/assetIcons.js
 ```
@@ -149,6 +151,9 @@ depend on:
 ToastProvider
   NotificationsProvider
     aside (sidebar, hidden below lg)
+      header row: app icon + name + bell
+      nav list
+      footer: user email, Logout, About (info button)
     header (compact, lg:hidden)  ← <h1> page name + bell + logout
     main (max-w-7xl, p-4 sm:p-6) ← <Outlet />
 ```
@@ -166,6 +171,33 @@ Two things are deliberate:
 - `ToastProvider` wraps the whole shell. A toast raised from a page outside
   this tree cannot render, and `useToast()` throws. This is why the login and
   setup screens use inline `<Alert>` instead of toasts.
+- The sidebar header is `icon + <span class="min-w-0 flex-1 truncate"> + bell
+  with shrink-0`. The name used to be a text node inside a truncating flex
+  container, where `truncate` cannot reach it, so at `w-64` "Asset Manager" ran
+  under the bell. Keep the truncation on a real flex item and keep the bell
+  `shrink-0`.
+
+## About overlay
+
+`components/AboutDialog.jsx` is the read-only About panel: name, version,
+license badge, overview, feature list, license link, author with GitHub /
+LinkedIn / email buttons, contributors, tech stack, repository and issue links.
+Every string comes from `appInfo.js`; the component takes `open`, `onClose` and
+an optional `icon` (the branding data URL from `hooks/useAppIcon.js`, falling
+back to a neutral mark).
+
+It is mounted from two places — the sidebar footer button and the Settings
+`AboutCard` — and is portalled to `<body>` for the same reason as the
+notification panel: the compact header uses `backdrop-blur`, and a
+`backdrop-filter` ancestor would clip a `position: fixed` overlay to that box.
+Escape and an outside click close it; it fetches nothing of its own.
+
+Its width ladder is `calc(100vw-1.5rem)` on phones (edge to edge),
+`min(40rem, 100vw-2rem)` from 640px up, and `min(60rem, 58vw)` from 1280px — a
+little over half a desktop window. Its height is capped at `100vh-7rem`
+(`100vh-3rem` on a phone), so it keeps a clear margin above and below instead of
+filling the screen, and scrolls inside that box: a tall overlay never widens or
+scrolls the page behind it.
 
 ## Notifications
 
@@ -324,6 +356,7 @@ Visibility is decided in `pages/Settings.jsx`, one card per component in
 | `QuickEntryCard` | admin | public form fields, title/subtitle/placeholders, templates, recipients |
 | `SmtpCard` | admin | host/port/user/password/encryption, test connection, test email |
 | `PasswordCard` | always | own password |
+| `AboutCard` | always | nothing — opens the read-only About overlay |
 
 Each card fetches and saves its own settings, so a failing endpoint only blanks
 that card. The SMTP password is never rendered: the API returns

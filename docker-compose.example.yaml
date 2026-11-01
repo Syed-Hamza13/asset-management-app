@@ -4,12 +4,14 @@ services:
     container_name: asset-management-app
     restart: unless-stopped
 
-    # NOTE for the Settings "Network restriction (IP allowlist)" feature: with a
-    # published port and Docker's default userland proxy, the container sees the
-    # bridge gateway IP (e.g. 172.17.0.1) for every visitor, so per-device ranges
-    # never match. Either replace this block with `network_mode: "host"`, or set
-    # `"userland-proxy": false` in /etc/docker/daemon.json on the host. Verify the
-    # "IP the server sees for you" line on a second device before switching on.
+    # The Settings "Network restriction (IP allowlist)" feature can only work if the
+    # container learns the visitor's own address. Behind nginx that means setting
+    # IP_ACCESS_TRUSTED_PROXIES (below) to the address the container sees as its
+    # peer - usually BOTH the nginx machine's IP and the Docker bridge gateway
+    # 172.17.0.1, which is what Docker's default userland proxy reports. Check the
+    # "IP the server sees for you" line on the Settings card from a second device to
+    # see which address arrives. Left empty, every visitor looks like the proxy and
+    # a single allowlist entry admits everyone.
     ports:
       - "8073:8073"
 
@@ -49,4 +51,11 @@ services:
       # Set to "false" and recreate the container if an allowlist mistake ever
       # locks every admin out; fix the list in Settings, then set it back.
       IP_ACCESS_ENFORCE: "true"
+
+      # Reverse proxy addresses the IP allowlist may trust for the real client IP.
+      # Comma-separated, single addresses or CIDR blocks. Leave empty only when
+      # nothing proxies to this container (then the socket address is used).
+      # Example for nginx on another machine reaching a published Docker port:
+      #   IP_ACCESS_TRUSTED_PROXIES: "192.168.1.10,172.17.0.1"
+      IP_ACCESS_TRUSTED_PROXIES: ""
 

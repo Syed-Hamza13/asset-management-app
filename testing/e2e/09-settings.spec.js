@@ -21,6 +21,7 @@ const CARD_TITLES = [
   'Quick Entry',
   'SMTP (email delivery)',
   'Change password',
+  'About this application',
 ];
 
 test.describe('settings', () => {
@@ -37,6 +38,62 @@ test.describe('settings', () => {
     // title to "SMTP" until the settings arrive), so retry until they all settle.
     await expect(page.locator('main h3')).toHaveText(CARD_TITLES);
     expect(writes, `opening Settings must not write: ${writes.join(', ')}`).toEqual([]);
+  });
+
+  test('the About card opens a read-only overlay', async ({ page }) => {
+    const writes = watchWrites(page);
+    await page.goto('/settings');
+    // About is the last card, so the click has to wait for the page to stop
+    // growing: while the SMTP/Quick Entry cards are still fetching, the button
+    // is scrolled towards a position the layout then moves (flake #12's family).
+    await expect(page.locator('main h3')).toHaveText(CARD_TITLES);
+    await card(page, 'About this application').getByRole('button', { name: 'Show details' }).click();
+
+    const dialog = page.getByRole('dialog', { name: 'About Asset Manager' });
+    await expect(dialog).toBeVisible();
+    await expect(dialog).toContainText('v1.0.0');
+    await expect(dialog).toContainText('MIT License');
+    await expect(dialog).toContainText('Syed Hamza');
+    await expect(dialog).toContainText('Tariq Khan');
+    // The register is for every asset class, not an IT-only tool: the overview
+    // says so, and no older "laptop/furniture register" wording comes back.
+    await expect(dialog).toContainText('a digital register for every kind of asset');
+    await expect(dialog).toContainText('from consumable stock to fixed office assets');
+    await expect(dialog).not.toContainText('furniture');
+    await expect(dialog.getByRole('link', { name: 'GitHub profile' })).toHaveAttribute(
+      'href',
+      'https://github.com/Syed-Hamza13',
+    );
+    await expect(dialog.getByRole('link', { name: 'LinkedIn profile' })).toHaveAttribute(
+      'href',
+      'https://www.linkedin.com/in/syed-hamza-9452b0232',
+    );
+
+    // 58% of a desktop window (min(60rem,58vw) => 742px here) and short enough to
+    // keep a clear margin above and below it, so the panel reads as a panel and
+    // not as a second full-screen page.
+    const size = await dialog.evaluate((el) => {
+      const box = el.getBoundingClientRect();
+      return {
+        width: Math.round(box.width),
+        height: Math.round(box.height),
+        top: Math.round(box.top),
+        bottomGap: Math.round(window.innerHeight - box.bottom),
+        screen: document.documentElement.clientWidth,
+        innerOverflow: el.scrollWidth - el.clientWidth,
+      };
+    });
+    expect(size.width, `About card ${size.width}px in a ${size.screen}px window`).toBeGreaterThanOrEqual(
+      Math.round(size.screen * 0.52),
+    );
+    expect(size.width).toBeLessThanOrEqual(Math.round(size.screen * 0.62));
+    expect(size.top, 'the card keeps room above it').toBeGreaterThanOrEqual(40);
+    expect(size.bottomGap, 'the card keeps room below it').toBeGreaterThanOrEqual(40);
+    expect(size.innerOverflow, 'the card never needs sideways scrolling').toBe(0);
+
+    await page.keyboard.press('Escape');
+    await expect(dialog).toHaveCount(0);
+    expect(writes, `the About overlay must not write: ${writes.join(', ')}`).toEqual([]);
   });
 
   test('the Turnstile card mirrors the server and only Save can change it', async ({ page, request }) => {

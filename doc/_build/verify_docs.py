@@ -23,6 +23,7 @@ ALLOWED = {
     "10.0.0.5",
     "10.0.0.40",
     "172.17.0.1",
+    "192.168.1.10",
     "0.0.0.0",
     "1.1.1.1",
     "smtp.example.com",
@@ -30,6 +31,8 @@ ALLOWED = {
     "a@x.com",
     "b@x.com",
     "192.168.1.20",
+    # Published author contact in the About/licensing sections — public by design.
+    "syed13hamza@gmail.com",
     "token = crypto.randomBytes(32).toString('hex')",
 }
 

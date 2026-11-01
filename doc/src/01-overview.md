@@ -134,6 +134,27 @@ Two rules that define the whole product:
 | Delivery | One Docker image (`node:bookworm-slim`, 2-stage build), built by GitHub Actions, published to Docker Hub |
 | Verification | Cloudflare Turnstile; passwords with argon2id; SMTP password with AES-256-GCM |
 
+# License, author and contributors
+
+| | |
+| --- | --- |
+| License | MIT (repository `LICENSE` file) — free to use, modify and redistribute, including commercially, with the copyright notice kept |
+| Version | 1.0.0 |
+| Author and developer | Syed Hamza — <https://github.com/Syed-Hamza13>, <mailto:syed13hamza@gmail.com> |
+| Contributors | Tariq Khan, Eklavya Foundation |
+| Source | <https://github.com/Syed-Hamza13/asset-management-app> |
+| Issues | <https://github.com/Syed-Hamza13/asset-management-app/issues> |
+
+There is no paid tier, no feature gate and no telemetry. The only outbound
+network calls are the ones an operator configures: the MySQL host, the SMTP
+server, and Cloudflare Turnstile if it is switched on.
+
+The same facts are shown inside the application in the About overlay
+(**Settings → About this application**, or the info button at the bottom of the
+desktop sidebar). Its text lives in one file, `client/src/appInfo.js`, together
+with `APP.version` — which is why a release bumps that file along with the three
+`package.json` versions.
+
 # How to read the rest of this documentation set
 
 Start with `00 — Index`. Then:
